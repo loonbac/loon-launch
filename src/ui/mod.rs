@@ -18,6 +18,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use crate::apps::{load_apps, power_actions};
+use crate::filter::requires_hold;
 use crate::models::Item;
 use crate::ui::layout::{WIN_H, WIN_W, WP_WIN_H, WP_WIN_W};
 use crate::ui::banner::{build_banner, BannerRefs};
@@ -249,12 +250,28 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
     };
 
     // Teclado: flechas, enter, escape, backspace y escritura.
+    // Si la acción seleccionada es de poder, Enter exige mantenerlo pulsado.
+    let selected_needs_hold: Rc<dyn Fn() -> bool> = {
+        let current_items = current_items.clone();
+        let sel_idx = sel_idx.clone();
+        Rc::new(move || {
+            let items = current_items.borrow();
+            let idx = *sel_idx.borrow();
+            items
+                .iter()
+                .filter(|it| !it.is_header)
+                .nth(idx.max(0) as usize)
+                .map(|it| requires_hold(&it.exec))
+                .unwrap_or(false)
+        })
+    };
     let keys_state = keys::KeyState {
         grid_refs: grid_refs.clone(),
         entry: entry.clone(),
         sel_idx: sel_idx.clone(),
         hide,
         run_selected,
+        selected_needs_hold,
     };
     setup_key_controller(&window, keys_state);
 

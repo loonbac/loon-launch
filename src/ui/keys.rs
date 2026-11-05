@@ -5,8 +5,11 @@ use gtk4::gdk::Key;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-use crate::filter::{apply_backspace, apply_char, move_sel_grid, move_selection_wrap};
+use crate::filter::{
+    apply_backspace, apply_char, hold_is_armed, hold_progress, move_sel_grid, move_selection_wrap,
+};
 use crate::ui::grid::GridRefs;
 
 #[derive(Clone)]
@@ -16,13 +19,26 @@ pub struct KeyState {
     pub sel_idx: Rc<RefCell<i32>>,
     pub hide: Rc<dyn Fn()>,
     pub run_selected: Rc<dyn Fn()>,
+    /// Si la acción seleccionada exige mantener Enter (acción de poder).
+    pub selected_needs_hold: Rc<dyn Fn() -> bool>,
+}
+
+/// Estado de una pulsación sostenida en curso.
+#[derive(Default)]
+struct HoldRun {
+    started: Option<Instant>,
+    ticker: Option<glib::SourceId>,
 }
 
 pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
     let controller = gtk4::EventControllerKey::new();
+    // Se guarda por controlador: sólo hay una pulsación sostenida a la vez.
+    let hold: Rc<RefCell<HoldRun>> = Rc::new(RefCell::new(HoldRun::default()));
     controller.connect_key_pressed(clone!(
         #[strong]
         state,
+        #[strong]
+        hold,
         move |_, key, _, _| {
             let apply_sel = {
                 let refs = state.grid_refs.clone();
@@ -79,6 +95,16 @@ pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
                     glib::Propagation::Stop
                 }
                 Key::Return | Key::KP_Enter => {
+                    // Acción de poder: no se ejecuta con un roce. Arranca una
+                    // pulsación sostenida y sólo dispara si se mantiene el
+                    // umbral; al soltar antes se cancela sin efecto.
+                    if (state.selected_needs_hold)() {
+                        let already = hold.borrow().started.is_some();
+                        if !already {
+                            start_hold(&hold, &state);
+                        }
+                        return glib::Propagation::Stop;
+                    }
                     (state.run_selected)();
                     glib::Propagation::Stop
                 }
@@ -101,6 +127,9 @@ pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
                 _ => {
                     if let Some(c) = key.to_unicode() {
                         if !c.is_control() {
+                            // Cualquier tecla nueva cancela una pulsación en
+                            // curso: el usuario está cambiando de intención.
+                            cancel_hold(&hold, &state);
                             let text = state.entry.text().to_string();
                             state.entry.set_text(&apply_char(&text, c));
                             state.entry.set_position(-1);
@@ -113,6 +142,83 @@ pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
             }
         },
     ));
+
+    // Al soltar Enter se decide: si no llegó al umbral, se cancela.
+    controller.connect_key_released(clone!(
+        #[strong]
+        state,
+        #[strong]
+        hold,
+        move |_, key, _, _| {
+            if matches!(key, Key::Return | Key::KP_Enter) {
+                finish_hold(&hold, &state);
+            }
+        }
+    ));
     controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
     window.add_controller(controller);
+}
+
+/// Arranca una pulsación sostenida y anima la barra de la tarjeta seleccionada
+/// a ~60 fps. El ticker se cancela solo al alcanzar el umbral.
+fn start_hold(hold: &Rc<RefCell<HoldRun>>, state: &KeyState) {
+    let started = Instant::now();
+    {
+        let mut h = hold.borrow_mut();
+        h.started = Some(started);
+    }
+    let idx = *state.sel_idx.borrow();
+    state.grid_refs.set_hold_progress(idx, 0.0);
+    let hold_tick = hold.clone();
+    let refs = state.grid_refs.clone();
+    let sel = state.sel_idx.clone();
+    let ticker = glib::timeout_add_local(Duration::from_millis(16), move || {
+        let Some(started) = hold_tick.borrow().started else {
+            return glib::ControlFlow::Break;
+        };
+        let elapsed = started.elapsed().as_millis() as u64;
+        let pct = hold_progress(elapsed);
+        refs.set_hold_progress(*sel.borrow(), pct);
+        if hold_is_armed(elapsed) {
+            // Umbral alcanzado: la barra queda llena y se deja de animar. El
+            // disparo real ocurre al soltar, para no ejecutar dos veces.
+            return glib::ControlFlow::Break;
+        }
+        glib::ControlFlow::Continue
+    });
+    let mut h = hold.borrow_mut();
+    h.ticker = Some(ticker);
+}
+
+/// Resuelve la pulsación al soltar: ejecuta si llegó al umbral, cancela si no.
+fn finish_hold(hold: &Rc<RefCell<HoldRun>>, state: &KeyState) {
+    let (started, ticker) = {
+        let mut h = hold.borrow_mut();
+        let started = h.started.take();
+        let ticker = h.ticker.take();
+        (started, ticker)
+    };
+    if let Some(ticker) = ticker {
+        ticker.remove();
+    }
+    state.grid_refs.clear_hold();
+    let Some(started) = started else {
+        return;
+    };
+    if hold_is_armed(started.elapsed().as_millis() as u64) {
+        (state.run_selected)();
+    }
+}
+
+/// Cancela una pulsación en curso sin ejecutar nada.
+fn cancel_hold(hold: &Rc<RefCell<HoldRun>>, state: &KeyState) {
+    let ticker = {
+        let mut h = hold.borrow_mut();
+        h.started = None;
+        h.ticker.take()
+    };
+    if let Some(ticker) = ticker {
+        ticker.remove();
+    }
+    state.grid_refs.clear_hold();
 }

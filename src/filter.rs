@@ -1,6 +1,43 @@
 // Lógica pura (testeable): filtrado de apps y movimiento de selección.
 use crate::models::Item;
 
+/// Milisegundos que hay que mantener `Enter` para que una acción de poder se
+/// ejecute. Suficiente para que la pulsación sea deliberada y no un roce.
+pub const HOLD_MS: u64 = 900;
+
+/// Acciones que exigen mantener `Enter` antes de ejecutarse.
+///
+/// Sólo las que interrumpen la sesión o apagan la máquina. El selector de fondos
+/// y las apps normales abren con un `Enter` suelto: no hay nada que confirmar.
+pub fn requires_hold(exec: &str) -> bool {
+    let exec = exec.trim();
+    if exec.is_empty() || exec == "wallpaper-mode" {
+        return false;
+    }
+    // Se compara por la acción real del sistema, no por el texto visible: el
+    // nombre de la etiqueta puede cambiar sin alterar el comportamiento.
+    const DISRUPTIVE: [&str; 4] = [
+        "systemctl poweroff",
+        "systemctl reboot",
+        "systemctl suspend",
+        "loginctl lock-session",
+    ];
+    DISRUPTIVE.contains(&exec)
+}
+
+/// Progreso de la pulsación, de 0.0 a 1.0, para la barra de la tarjeta.
+pub fn hold_progress(elapsed_ms: u64) -> f64 {
+    if HOLD_MS == 0 {
+        return 1.0;
+    }
+    (elapsed_ms as f64 / HOLD_MS as f64).clamp(0.0, 1.0)
+}
+
+/// Si la pulsación ya cumplió el umbral y la acción debe ejecutarse.
+pub fn hold_is_armed(elapsed_ms: u64) -> bool {
+    elapsed_ms >= HOLD_MS
+}
+
 /// Qué lista se está mostrando. Es estado explícito de la UI, no algo que el
 /// usuario teclea: el selector de fondos se abre con la acción `>` («Cambiar
 /// fondo de pantalla») y `Tab` alterna entre animados y estáticos.

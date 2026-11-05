@@ -187,6 +187,78 @@ impl GridRefs {
         }
     }
 
+    /// Pinta el avance de una pulsación sostenida sobre la tarjeta seleccionada.
+    /// `pct` va de 0.0 a 1.0; 0 quita la marca y deja la fila como estaba.
+    /// La barra es un hijo real de la fila: crecerla no cambia la altura ni
+    /// requiere inyectar CSS en cada tick.
+    pub fn set_hold_progress(&self, idx: i32, pct: f64) {
+        if *self.wallpaper_mode.borrow() {
+            return;
+        }
+        let pct = pct.clamp(0.0, 1.0);
+        let cards = self.cards.borrow();
+        let Some(card) = (idx >= 0).then(|| cards.get(idx as usize)).flatten().cloned() else {
+            return;
+        };
+        drop(cards);
+        let bar = self.hold_bar(&card);
+        if pct <= 0.0 {
+            card.remove_css_class("holding");
+            bar.set_size_request(0, 3);
+            bar.set_visible(false);
+            return;
+        }
+        card.add_css_class("holding");
+        bar.set_visible(true);
+        // El ancho se interpola sobre el ancho útil de la tarjeta.
+        let width = (card.width().max(1) as f64 * pct) as i32;
+        bar.set_size_request(width.max(1), 3);
+    }
+
+    /// Devuelve la barra de progreso de una tarjeta, creándola la primera vez.
+    /// Se guarda en una lista paralela a `cards` para no tocar la estructura de
+    /// la fila (que es un `Box` con icono y etiqueta).
+    fn hold_bar(&self, card: &Widget) -> gtk4::Box {
+        let child = card
+            .clone()
+            .downcast::<ListBoxRow>()
+            .ok()
+            .and_then(|row| row.child())
+            .and_then(|c| c.downcast::<gtk4::Box>().ok());
+        if let Some(container) = child {
+            if let Some(existing) = container
+                .last_child()
+                .and_then(|c| c.downcast::<gtk4::Box>().ok())
+                .filter(|b| b.has_css_class("hold-bar"))
+            {
+                return existing;
+            }
+            let bar = gtk4::Box::new(Orientation::Horizontal, 0);
+            bar.add_css_class("hold-bar");
+            bar.set_halign(gtk4::Align::Start);
+            bar.set_valign(gtk4::Align::End);
+            bar.set_visible(false);
+            container.append(&bar);
+            bar
+        } else {
+            gtk4::Box::new(Orientation::Horizontal, 0)
+        }
+    }
+
+    pub fn clear_hold(&self) {
+        if *self.wallpaper_mode.borrow() {
+            return;
+        }
+        let cards = self.cards.borrow().clone();
+        for (idx, card) in cards.iter().enumerate() {
+            card.remove_css_class("holding");
+            let bar = self.hold_bar(card);
+            bar.set_size_request(0, 3);
+            bar.set_visible(false);
+            let _ = idx;
+        }
+    }
+
     pub fn apply_sel(&self, idx: i32) {
         if *self.wallpaper_mode.borrow() {
             self.carousel.set_selected(idx, true);

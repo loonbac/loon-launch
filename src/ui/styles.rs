@@ -74,6 +74,17 @@ row:hover {{
 row.selected {{
     background-color: @selected;
 }}
+
+/* Barra de confirmación: crece mientras se mantiene Enter sobre una acción de
+   poder. Vive dentro de la fila como hijo propio, así que no altera la altura
+   ni necesita inyectar estilos por tick. */
+row.holding {{
+    background-color: @selected;
+}}
+box.hold-bar {{
+    background-color: @background;
+    border-radius: 2px;
+}}
 label.app-name {{
     color: @foreground;
     font-weight: 500;

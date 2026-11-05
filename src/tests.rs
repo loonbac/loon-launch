@@ -2,7 +2,8 @@
 use crate::apps::{data_dirs, power_actions};
 use crate::filter::{
     apply_backspace, apply_char, filter_items, move_sel_grid, move_sel_rowwise, move_selection,
-    move_selection_wrap, normalize_selection, SearchMode,
+    move_selection_wrap, normalize_selection, hold_is_armed, hold_progress, requires_hold,
+    SearchMode, HOLD_MS,
 };
 use crate::models::Item;
 use crate::ui::layout::ROWS;
@@ -107,6 +108,61 @@ fn power_prefix_still_opens_power_actions() {
     let got = filter_items(&[], &power(), &[], ">", SearchMode::Apps);
     assert_eq!(got.len(), power().len());
     assert!(got.iter().all(|it| !it.is_wallpaper));
+}
+
+#[test]
+fn power_menu_does_not_offer_hibernate() {
+    // Esta máquina no puede hibernar: no hay `resume=` en el cmdline y el único
+    // swap es zram (volátil). Ofrecerlo sería prometer algo que no ocurre.
+    let names: Vec<String> = power().iter().map(|it| it.name.clone()).collect();
+    assert!(
+        !names.iter().any(|n| n.contains("Hibernar")),
+        "el menú de poder no debe ofrecer Hibernar: {names:?}"
+    );
+}
+
+#[test]
+fn power_menu_keeps_the_actions_that_make_sense_on_a_desktop() {
+    let names: Vec<String> = power().iter().map(|it| it.name.clone()).collect();
+    for expected in ["Apagar", "Reiniciar", "Suspender", "Bloquear"] {
+        assert!(
+            names.iter().any(|n| n == expected),
+            "falta la acción {expected}: {names:?}"
+        );
+    }
+    assert!(
+        names.iter().any(|n| n.contains("Cambiar fondo")),
+        "falta cambiar fondo de pantalla: {names:?}"
+    );
+}
+
+#[test]
+fn only_disruptive_power_actions_require_a_hold() {
+    // Mantener Enter sólo para lo que interrumpe la sesión o la apaga.
+    assert!(requires_hold("systemctl poweroff"));
+    assert!(requires_hold("systemctl reboot"));
+    assert!(requires_hold("systemctl suspend"));
+    assert!(requires_hold("loginctl lock-session"));
+    // El selector de fondos y las apps normales abren con un Enter suelto.
+    assert!(!requires_hold("wallpaper-mode"));
+    assert!(!requires_hold("firefox"));
+    assert!(!requires_hold(""));
+}
+
+#[test]
+fn hold_progress_grows_and_completes_at_the_threshold() {
+    assert_eq!(hold_progress(0), 0.0);
+    assert!((hold_progress(HOLD_MS / 2) - 0.5).abs() < 0.01);
+    assert_eq!(hold_progress(HOLD_MS), 1.0);
+    // Nunca pasa de 1: la barra no puede desbordar.
+    assert_eq!(hold_progress(HOLD_MS * 3), 1.0);
+}
+
+#[test]
+fn hold_is_not_armed_below_the_threshold() {
+    assert!(!hold_is_armed(HOLD_MS - 1));
+    assert!(hold_is_armed(HOLD_MS));
+    assert!(hold_is_armed(HOLD_MS + 500));
 }
 
 #[test]
