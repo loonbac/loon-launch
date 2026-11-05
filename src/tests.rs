@@ -277,3 +277,19 @@ fn palette_keeps_its_default_accent_without_a_valid_token() {
     let palette = Palette::with_accent(None);
     assert_eq!(palette.selected, Palette::default().selected);
 }
+
+#[test]
+fn overlay_is_used_only_on_wayland_with_layer_shell_support() {
+    use crate::ui::overlay::{use_overlay, NAMESPACE};
+
+    // Solo con Wayland Y soporte del compositor; en el resto de casos la app
+    // tiene que seguir funcionando con una ventana normal.
+    assert!(use_overlay(true, true));
+    assert!(!use_overlay(true, false));
+    assert!(!use_overlay(false, true));
+    assert!(!use_overlay(false, false));
+
+    // El namespace es el identificador visible para el compositor.
+    assert_eq!(NAMESPACE, "loon-launch");
+    assert!(!NAMESPACE.contains(char::is_whitespace));
+}

@@ -8,6 +8,7 @@ mod carousel;
 mod grid;
 pub mod layout;
 mod keys;
+pub mod overlay;
 pub mod palette;
 pub mod styles;
 
@@ -105,6 +106,11 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
     window.add_css_class("loon-launch");
     window.set_default_size(WIN_W, WIN_H);
     window.set_size_request(WIN_W, WIN_H);
+    // En Wayland con soporte del compositor la ventana pasa a ser superficie de
+    // capa: así abrir el launcher no ocupa (ni crea) un workspace.
+    if !overlay::apply(&window) {
+        eprintln!("loon-launch: layer-shell unavailable; using a regular window");
+    }
 
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     vbox.set_size_request(WIN_W, WIN_H);
