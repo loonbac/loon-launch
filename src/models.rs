@@ -1,4 +1,4 @@
-// Modelo de una app/acción y constantes de layout del grid.
+// Modelo de una app/acción. Las cotas de la grilla viven en ui/layout.rs.
 #[derive(Clone)]
 pub struct Item {
     pub name: String,
@@ -62,20 +62,3 @@ impl Item {
     }
 }
 
-// Las apps se muestran como lista en columnas de ROWS filas: las dos
-// primeras columnas quedan visibles y el resto se desplaza a la derecha
-// (scroll horizontal en el ScrolledWindow).
-pub const ROWS: usize = 4;
-pub const CELL_W: i32 = 230;
-pub const ROW_H: i32 = 48;
-
-// Ventana de apps: tamaño aprobado del launcher.
-pub const WIN_W: i32 = 680;
-pub const WIN_H: i32 = 350;
-pub const BANNER_H: i32 = 180;
-
-// Modo fondos: carrusel ancho inspirado en el image-picker de Omarchy.
-// La preview central conserva sus proporciones originales y las laterales
-// aparecen como cortes estrechos superpuestos.
-pub const WP_WIN_W: i32 = 1400;
-pub const WP_WIN_H: i32 = 590;

@@ -10,8 +10,12 @@ use std::time::Duration;
 
 use crate::filter::{filter_items, normalize_selection};
 use crate::icons::resolve_icon;
-use crate::models::{Item, BANNER_H, CELL_W, ROW_H, ROWS, WIN_H, WIN_W, WP_WIN_H, WP_WIN_W};
+use crate::models::Item;
 use crate::ui::carousel::{build_carousel, CarouselRefs};
+use crate::ui::layout::{
+    cell_position, cell_width, section_rows, ICON_SIZE, LIST_PAD, LIST_SPACING, ROW_H, VISIBLE_W,
+    WELL_H, WIN_W, WP_WIN_H, WP_WIN_W,
+};
 
 /// Referencias a los widgets del grid que usa el resto de la UI.
 #[derive(Clone)]
@@ -138,27 +142,23 @@ impl GridRefs {
             let (cell, _) = make_app_cell(item);
             if item.is_header {
                 if items_in_section > 0 {
-                    row = header_row + 1 + ((items_in_section + ROWS - 1) / ROWS) as i32;
+                    row = header_row + 1 + section_rows(items_in_section);
                 }
                 self.grid.attach(&cell, 0, row, 100, 1);
                 header_row = row;
                 row += 1;
                 items_in_section = 0;
             } else {
-                self.grid.attach(
-                    &cell,
-                    (item_idx / ROWS) as i32,
-                    header_row + 1 + (item_idx % ROWS) as i32,
-                    1,
-                    1,
-                );
+                let (col, line) = cell_position(item_idx);
+                self.grid
+                    .attach(&cell, col, header_row + 1 + line, 1, 1);
                 if Some(i) == sel_item {
                     cell.add_css_class("selected");
                 }
                 bind_click(&cell, selectable_idx, sel, self);
-                self.positions
-                    .borrow_mut()
-                    .push(((item_idx % ROWS) as i32, (item_idx / ROWS) as i32));
+                // `positions` guarda (fila, columna): así lo recorre la
+                // navegación de teclado en filter::move_sel_grid.
+                self.positions.borrow_mut().push((line, col));
                 self.cards.borrow_mut().push(cell.clone().upcast());
                 if animate {
                     animate_enter(
@@ -251,11 +251,7 @@ impl GridRefs {
     }
 
     fn apply_chrome(&self, wallpaper_mode: bool) {
-        let well_h = if wallpaper_mode {
-            WP_WIN_H
-        } else {
-            WIN_H - BANNER_H
-        };
+        let well_h = if wallpaper_mode { WP_WIN_H } else { WELL_H };
         if wallpaper_mode {
             self.scrolled.set_child(Some(&self.carousel.area));
             self.scrolled.set_vscrollbar_policy(gtk4::PolicyType::Never);
@@ -264,6 +260,7 @@ impl GridRefs {
             // No imponer 1400 aquí permite que el carrusel quepa en el
             // monitor vertical de 1080 px.
             self.scrolled.set_size_request(-1, well_h);
+            self.scrolled.set_margin_end(0);
             self.scrolled.set_min_content_width(0);
             self.scrolled.set_max_content_width(WP_WIN_W);
             self.scrolled.set_hexpand(true);
@@ -273,9 +270,10 @@ impl GridRefs {
             // Automatic: si es Never, GTK ensancha la ventana para mostrar
             // todas las columnas. La barra se oculta por CSS.
             self.scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
-            self.scrolled.set_size_request(WIN_W, well_h);
-            self.scrolled.set_min_content_width(WIN_W);
-            self.scrolled.set_max_content_width(WIN_W);
+            self.scrolled.set_size_request(VISIBLE_W, well_h);
+            self.scrolled.set_margin_end(WIN_W - VISIBLE_W);
+            self.scrolled.set_min_content_width(VISIBLE_W);
+            self.scrolled.set_max_content_width(VISIBLE_W);
             self.scrolled.set_hexpand(false);
         }
         // Liberar primero el máximo evita una aserción de GTK al pasar de
@@ -289,31 +287,39 @@ impl GridRefs {
 /// Construye el grid + galería + scrolled window.
 pub fn build_grid() -> GridRefs {
     let grid = gtk4::Grid::new();
-    grid.set_row_spacing(2);
-    grid.set_column_spacing(2);
+    grid.set_row_spacing(LIST_SPACING as u32);
+    grid.set_column_spacing(LIST_SPACING as u32);
+    // El padding de la lista (rofi `listbox padding: 15px`) se aplica como
+    // margen del grid; el derecho lo aporta la ventana, fuera del scroller.
+    grid.set_margin_start(LIST_PAD);
+    grid.set_margin_top(LIST_PAD);
+    grid.set_margin_bottom(LIST_PAD);
     grid.set_halign(gtk4::Align::Center);
     grid.set_valign(gtk4::Align::Start);
     grid.set_focusable(true);
 
     let carousel = build_carousel();
 
-    let well_h = WIN_H - BANNER_H; // apps; el modo fondos lo cambia en apply_chrome
+    let well_h = WELL_H; // apps; el modo fondos lo cambia en apply_chrome
     let scrolled = gtk4::ScrolledWindow::builder()
         .child(&grid)
         .hexpand(false)
         .vexpand(false)
         .propagate_natural_width(false)
         .propagate_natural_height(false)
-        .min_content_width(WIN_W)
-        .max_content_width(WIN_W)
+        .min_content_width(VISIBLE_W)
+        .max_content_width(VISIBLE_W)
         .min_content_height(well_h)
         .max_content_height(well_h)
-        .width_request(WIN_W)
+        .width_request(VISIBLE_W)
         .height_request(well_h)
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
         .vscrollbar_policy(gtk4::PolicyType::Never)
         .focusable(true)
         .build();
+    // El resto del ancho de la ventana es el padding derecho de la lista: vive
+    // fuera del scroller para que la columna siguiente no se vea recortada.
+    scrolled.set_margin_end(WIN_W - VISIBLE_W);
 
     GridRefs {
         grid,
@@ -423,13 +429,11 @@ fn make_app_cell(item: &Item) -> (ListBoxRow, Option<gtk4::MediaFile>) {
         return (cell, None);
     }
 
-    cell.set_size_request(CELL_W, ROW_H);
+    cell.set_size_request(cell_width(), ROW_H);
 
+    // El padding de la celda (rofi `element padding: 8px`) lo pone el CSS
+    // sobre `row`; aquí sólo el espaciado entre ícono y texto.
     let hbox = gtk4::Box::new(Orientation::Horizontal, 10);
-    hbox.set_margin_top(4);
-    hbox.set_margin_bottom(4);
-    hbox.set_margin_start(10);
-    hbox.set_margin_end(10);
     hbox.set_valign(gtk4::Align::Center);
 
     let image = Image::new();
@@ -445,8 +449,12 @@ fn make_app_cell(item: &Item) -> (ListBoxRow, Option<gtk4::MediaFile>) {
     } else if let Some(icon) = resolve_icon(&item.icon) {
         image.set_paintable(Some(&icon));
     }
-    image.set_pixel_size(if item.is_wallpaper { 40 } else { 28 });
-    image.set_size_request(if item.is_wallpaper { 64 } else { 28 }, 40);
+    image.set_pixel_size(if item.is_wallpaper { 40 } else { ICON_SIZE });
+    if item.is_wallpaper {
+        image.set_size_request(64, 40);
+    } else {
+        image.set_size_request(ICON_SIZE, ICON_SIZE);
+    }
     image.set_valign(gtk4::Align::Center);
     hbox.append(&image);
 
