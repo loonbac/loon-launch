@@ -9,7 +9,7 @@ use crate::ui::layout::ELEMENT_PAD;
 
 /// Hoja de estilos completa: tokens de la paleta, fuentes y reglas.
 pub fn stylesheet() -> String {
-    let palette = Palette::default();
+    let palette = Palette::current();
     let mut css = palette.css_defines();
     css.push_str(&palette.font_rule());
     css.push_str(&rules(&palette));
@@ -118,6 +118,9 @@ scrollbar * {{
     )
 }
 
+/// Instala la hoja de estilos y la mantiene al día cuando cambia el acento del
+/// wallpaper: `accent-wallpaper` reescribe `accent.txt` y el launcher, que vive
+/// toda la sesión, vuelve a cargar sus reglas en vez de esperar un reinicio.
 pub fn setup_styles(window: &gtk4::ApplicationWindow) {
     let css = gtk4::CssProvider::new();
     css.load_from_data(&stylesheet());
@@ -126,4 +129,26 @@ pub fn setup_styles(window: &gtk4::ApplicationWindow) {
         &css,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+    watch_accent(css);
+}
+
+/// Observa el archivo de acento y recarga la hoja cuando cambia.
+fn watch_accent(css: gtk4::CssProvider) {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let path = std::path::PathBuf::from(home).join(crate::ui::palette::ACCENT_FILE);
+    let file = gtk4::gio::File::for_path(&path);
+    let Ok(monitor) = file.monitor_file(
+        gtk4::gio::FileMonitorFlags::NONE,
+        gtk4::gio::Cancellable::NONE,
+    ) else {
+        return;
+    };
+    monitor.connect_changed(move |_, _, _, _| {
+        css.load_from_data(&stylesheet());
+    });
+    // El monitor vive lo que vive el proceso: es la suscripción del launcher al
+    // acento del sistema, no un recurso temporal.
+    std::mem::forget(monitor);
 }

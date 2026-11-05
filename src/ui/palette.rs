@@ -1,8 +1,19 @@
-// Paleta del launcher: los tokens de `shared.rasi` (gh0stzk/dotfiles).
+// Paleta del launcher: los tokens de `shared.rasi` (gh0stzk/dotfiles) más el
+// acento vivo del sistema.
 //
 // Una sola fuente de verdad para color y tipografía. Las reglas de `styles.rs`
 // referencian estos tokens como `@nombre`; ningún color literal vive fuera de
 // este archivo, así que cambiar el tema es editar esta paleta.
+//
+// El acento no se hereda del `.rasi`: el sistema lo deriva del wallpaper activo
+// (`accent-wallpaper` del repo de NixOS) y lo publica en
+// `~/.config/mpvpaper/accent.txt`. Cuando ese archivo existe y es válido, la
+// selección del launcher lo sigue; si no, queda el acento por defecto.
+
+use std::path::{Path, PathBuf};
+
+/// Archivo donde `accent-wallpaper` publica el acento del wallpaper activo.
+pub const ACCENT_FILE: &str = ".config/mpvpaper/accent.txt";
 
 /// Nombres de los tokens de color expuestos a la hoja de estilos.
 pub const COLOR_TOKENS: [&str; 6] = [
@@ -21,12 +32,12 @@ pub struct Palette {
     pub font_size: i32,
     /// Tamaño del texto de la entrada de búsqueda, en px.
     pub entry_size: i32,
-    pub background: &'static str,
-    pub background_alt: &'static str,
-    pub foreground: &'static str,
-    pub selected: &'static str,
-    pub active: &'static str,
-    pub urgent: &'static str,
+    pub background: String,
+    pub background_alt: String,
+    pub foreground: String,
+    pub selected: String,
+    pub active: String,
+    pub urgent: String,
 }
 
 impl Default for Palette {
@@ -35,27 +46,41 @@ impl Default for Palette {
             font_family: "JetBrainsMono Nerd Font",
             font_size: 12,
             entry_size: 13,
-            background: "#1a1b26",
-            background_alt: "rgba(26, 27, 38, 0.86)",
-            foreground: "#c0caf5",
-            selected: "#ee3d96",
-            active: "#9ece6a",
-            urgent: "#f7768e",
+            background: "#1A1B26".to_string(),
+            background_alt: "#1A1B26E0".to_string(),
+            foreground: "#c0caf5".to_string(),
+            selected: "#7aa2f7".to_string(),
+            active: "#9ece6a".to_string(),
+            urgent: "#f7768e".to_string(),
         }
     }
 }
 
 impl Palette {
+    /// Paleta base con el acento indicado. `None` deja el acento por defecto.
+    pub fn with_accent(accent: Option<String>) -> Self {
+        let mut palette = Self::default();
+        if let Some(accent) = accent {
+            palette.selected = accent;
+        }
+        palette
+    }
+
+    /// Paleta del launcher en ejecución: acento del wallpaper si está disponible.
+    pub fn current() -> Self {
+        Self::with_accent(system_accent())
+    }
+
     /// Bloque `@define-color` que consumen las reglas de estilo.
     pub fn css_defines(&self) -> String {
-        let mut css = String::from("/* Paleta: tokens de shared.rasi. */\n");
+        let mut css = String::from("/* Paleta: tokens de shared.rasi + acento del sistema. */\n");
         for (token, value) in [
-            ("background", self.background),
-            ("background-alt", self.background_alt),
-            ("foreground", self.foreground),
-            ("selected", self.selected),
-            ("active", self.active),
-            ("urgent", self.urgent),
+            ("background", &self.background),
+            ("background-alt", &self.background_alt),
+            ("foreground", &self.foreground),
+            ("selected", &self.selected),
+            ("active", &self.active),
+            ("urgent", &self.urgent),
         ] {
             css.push_str(&format!("@define-color {token} {value};\n"));
         }
@@ -75,4 +100,27 @@ impl Palette {
     pub fn entry_font_rule(&self) -> String {
         format!("font-size: {}px;", self.entry_size)
     }
+}
+
+/// Normaliza un acento a `#RRGGBB`, o `None` si no es un hex de seis dígitos.
+///
+/// El archivo lo escribe otro programa: llega con salto de línea y puede estar
+/// corrupto, así que se valida antes de inyectarlo en la hoja de estilos.
+pub fn normalize_accent(raw: &str) -> Option<String> {
+    let hex = raw.trim().strip_prefix('#')?;
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("#{}", hex.to_ascii_uppercase()))
+}
+
+/// Acento publicado en `path`, si el archivo existe y es válido.
+pub fn accent_from_file(path: &Path) -> Option<String> {
+    normalize_accent(&std::fs::read_to_string(path).ok()?)
+}
+
+/// Acento del sistema derivado del wallpaper activo.
+pub fn system_accent() -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    accent_from_file(&PathBuf::from(home).join(ACCENT_FILE))
 }
