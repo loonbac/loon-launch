@@ -19,6 +19,7 @@
 mod apps;
 mod filter;
 mod icons;
+mod power;
 mod models;
 mod ui;
 mod wallpapers;
