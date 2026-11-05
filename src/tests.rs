@@ -308,3 +308,84 @@ fn overlay_applies_exclusive_keyboard_on_the_overlay_layer() {
     assert_eq!(CONFIG.exclusive_zone, 0);
     assert_eq!(CONFIG.namespace, NAMESPACE);
 }
+
+#[test]
+fn headers_parse_skips_malformed_lines() {
+    use crate::ui::headers::parse_index;
+
+    // El índice lo genera un script: una línea rota no debe tumbar el catálogo.
+    let text = "# cabeceras\nok.webp\t120.0\t0.4\t0.5\nsin-tono.webp\tx\t0.4\t0.5\n\n\t90.0\t0.2\t0.3\nfuera.webp\t420.0\t0.2\t0.3\nvacio.webp\t90.0\n";
+    let headers = parse_index(text);
+    assert_eq!(headers.len(), 1);
+    assert_eq!(headers[0].file, "ok.webp");
+    assert_eq!(headers[0].hue, 120.0);
+}
+
+#[test]
+fn accent_hue_is_computed_circularly() {
+    use crate::ui::headers::hue_of;
+
+    // El acento del sistema llega como hex de seis dígitos.
+    let teal = hue_of("#217168").expect("teal tiene tono");
+    assert!((teal - 173.0).abs() < 3.0, "teal ~173°, fue {teal}");
+    let red = hue_of("#FF0000").expect("rojo tiene tono");
+    assert!(red.abs() < 0.01 || (red - 360.0).abs() < 0.01);
+    // Sin tono definido: gris o hex inválido.
+    assert_eq!(hue_of("#808080"), None);
+    assert_eq!(hue_of("217168"), None);
+}
+
+#[test]
+fn headers_are_picked_only_from_the_accent_window() {
+    use crate::ui::headers::{matching, pick, Header, HUE_WINDOW};
+
+    let headers = vec![
+        Header { file: "teal.webp".into(), hue: 175.0 },
+        Header { file: "azul.webp".into(), hue: 230.0 },
+        Header { file: "rojo.webp".into(), hue: 355.0 },
+        Header { file: "rojo-cerca.webp".into(), hue: 5.0 },
+    ];
+
+    // La ventana es de ±HUE_WINDOW grados y cruza el 0/360 sin romperse.
+    let near_teal = matching(&headers, 173.0);
+    assert_eq!(near_teal.len(), 1);
+    assert_eq!(near_teal[0].file, "teal.webp");
+
+    let near_red = matching(&headers, 0.0);
+    assert_eq!(near_red.len(), 2, "rojo 355 y 5 deben entrar");
+
+    // La elección es reproducible con el mismo roll y cambia con otro.
+    let first = pick(&headers, Some(0.0), 0).map(|h| h.file.clone());
+    let repeat = pick(&headers, Some(0.0), 2).map(|h| h.file.clone());
+    assert_eq!(first, repeat);
+    let other = pick(&headers, Some(0.0), 1).map(|h| h.file.clone());
+    assert_ne!(first, other);
+
+    // Sin acento, o sin coincidencias, se usa el catálogo completo.
+    assert!(pick(&headers, None, 0).is_some());
+    assert!(pick(&headers, Some(120.0), 0).is_some());
+}
+
+#[test]
+fn header_catalog_loads_and_matches_the_system_accent() {
+    use crate::ui::headers::{matching, hue_of, Catalog};
+
+    let catalog = Catalog::load().expect("el índice de cabeceras debe existir");
+    assert!(catalog.headers.len() > 100, "catálogo vacío");
+
+    // Con el acento actual del escritorio debe haber candidatas.
+    let accent = crate::ui::palette::system_accent();
+    if let Some(hue) = accent.as_deref().and_then(hue_of) {
+        let candidates = matching(&catalog.headers, hue);
+        assert!(
+            !candidates.is_empty(),
+            "ninguna cabecera combina con el acento {accent:?} (tono {hue})"
+        );
+        // Y la ruta resuelta tiene que existir en disco.
+        let path = catalog.path(candidates[0]);
+        assert!(path.is_file(), "no existe {}", path.display());
+        // El llamador recibe varias: si una no decodifica, prueba la siguiente.
+        let ordered = crate::ui::headers::candidates_for_accent(accent.as_deref(), 0);
+        assert!(ordered.len() > 1, "sin alternativas si la primera falla");
+    }
+}
