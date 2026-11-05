@@ -1,50 +1,33 @@
 // Detección de capacidades del host que condicionan el menú de poder.
 //
 // «Hibernar» sólo tiene sentido si el kernel puede escribir la imagen en un medio
-// que sobreviva al apagado: `resume=` en el cmdline Y un swap que no sea zram.
-// Ofrecerlo sin eso promete una restauración que no ocurre y arriesga el trabajo
-// abierto del usuario.
+// que sobreviva al apagado y con espacio suficiente para ella. Ofrecerlo sin eso
+// promete una restauración que no ocurre y arriesga el trabajo abierto.
+//
+// La condición es **una sola**: existe un swap que no sea zram y cuyo tamaño
+// cubre la RAM. Lo de «dónde restaurar» no se comprueba aquí a propósito: el
+// initrd de NixOS deriva `resumeDevices` de `swapDevices` y escribe el major:minor
+// en `/sys/power/resume` antes de montar el sistema (`stage-1-init.sh`), sin
+// necesidad de `resume=` en el cmdline ni de `boot.resumeDevice` para particiones.
+// Exigir `resume=` en `/proc/cmdline` ocultaría la capacidad en hosts que sí
+// pueden hibernar, que es justo el error que hay que evitar.
 
 /// Detecta si este host puede hibernar leyendo `/proc`.
-///
-/// Las tres condiciones juntas: `resume=` en el cmdline (sin él el kernel no
-/// sabe de dónde restaurar), un swap que no sea zram (zram vive en RAM y no
-/// sobrevive al apagado) y que ese swap sea al menos tan grande como la RAM
-/// (una imagen menor puede abortar la operación a mitad).
 pub fn host_can_hibernate() -> bool {
-    let cmdline = std::fs::read_to_string("/proc/cmdline").ok();
     let swaps = std::fs::read_to_string("/proc/swaps").ok().unwrap_or_default();
     let mem_total = std::fs::read_to_string("/proc/meminfo")
         .ok()
         .and_then(|m| mem_total_kib(&m))
         .unwrap_or(0);
-    can_hibernate_with_swap_size(cmdline.as_deref(), &swaps, mem_total)
+    can_hibernate(&swaps, mem_total)
 }
 
 /// Decide con los datos ya leídos, para poder probarlo sin tocar `/proc`.
 ///
-/// `cmdline` es `None` si no se pudo leer, y entonces se asume que no puede
-/// hibernar: ante la duda, no se ofrece la acción.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn can_hibernate(cmdline: Option<&str>, swaps: &str) -> bool {
-    let Some(cmdline) = cmdline else {
-        return false;
-    };
-    has_resume_arg(cmdline) && has_disk_swap(swaps)
-}
-
-/// Como [`can_hibernate`], exigiendo además que el swap cubra la RAM.
 /// `mem_total_kib` en 0 (no medido) acepta cualquier swap de disco: no se puede
 /// descartar por tamaño lo que no se conoce.
-pub fn can_hibernate_with_swap_size(
-    cmdline: Option<&str>,
-    swaps: &str,
-    mem_total_kib: u64,
-) -> bool {
-    let Some(cmdline) = cmdline else {
-        return false;
-    };
-    has_resume_arg(cmdline) && has_adequate_swap(mem_total_kib, swaps)
+pub fn can_hibernate(swaps: &str, mem_total_kib: u64) -> bool {
+    has_adequate_swap(mem_total_kib, swaps)
 }
 
 /// `MemTotal` de `/proc/meminfo`, en KiB.
@@ -58,8 +41,9 @@ pub fn mem_total_kib(meminfo: &str) -> Option<u64> {
 /// Algún swap que no sea zram y que sea al menos tan grande como `mem_total_kib`.
 ///
 /// Una imagen de hibernación ocupa aproximadamente la RAM en uso, así que un
-/// swap menor puede quedarse corto y abortar la operación a mitad. Con
-/// `mem_total_kib == 0` sólo se exige que exista (no se conoce la cota).
+/// swap menor puede quedarse corto y abortar la operación a mitad. zram vive en
+/// RAM: aunque sea enorme, su contenido desaparece al apagar y no sirve como
+/// respaldo. Con `mem_total_kib == 0` sólo se exige que exista (no hay cota).
 pub fn has_adequate_swap(mem_total_kib: u64, swaps: &str) -> bool {
     swap_entries(swaps).any(|entry| {
         let is_disk = !entry.device.starts_with("/dev/zram");
@@ -93,21 +77,4 @@ fn swap_entries(swaps: &str) -> impl Iterator<Item = SwapEntry> + '_ {
             size_kib,
         })
     })
-}
-
-/// `resume=` seguido de un valor no vacío. `resume` suelto no habilita nada.
-pub fn has_resume_arg(cmdline: &str) -> bool {
-    cmdline.split_whitespace().any(|arg| {
-        arg.strip_prefix("resume=")
-            .is_some_and(|value| !value.is_empty())
-    })
-}
-
-/// Algún swap que no sea zram.
-///
-/// Se usa para la comprobación sin tamaño; con tamaño disponible preferir
-/// [`has_adequate_swap`], que además exige cubrir la RAM.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn has_disk_swap(swaps: &str) -> bool {
-    swap_entries(swaps).any(|entry| !entry.device.starts_with("/dev/zram"))
 }

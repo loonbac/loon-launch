@@ -6,9 +6,7 @@ use crate::filter::{
     SearchMode, HOLD_MS,
 };
 use crate::models::Item;
-use crate::power::{
-    can_hibernate, can_hibernate_with_swap_size, has_adequate_swap, has_disk_swap,
-};
+use crate::power::{can_hibernate, has_adequate_swap, mem_total_kib};
 use crate::ui::layout::ROWS;
 use crate::ui::parse_logical_size;
 
@@ -492,28 +490,44 @@ fn header_catalog_loads_and_matches_the_system_accent() {
 }
 
 #[test]
-fn hibernate_is_offered_only_with_resume_and_disk_swap() {
-    // Las dos condiciones juntas: sin una de ellas no hay imagen que restaurar.
-    assert!(can_hibernate(Some("resume=/dev/nvme0n1p3"), "/dev/nvme0n1p3 partition"));
-    assert!(!can_hibernate(None, "/dev/nvme0n1p3 partition")); // sin resume=
-    assert!(!can_hibernate(Some("resume=/dev/sda2"), "/dev/zram0 partition")); // sólo zram
-    assert!(!can_hibernate(None, "/dev/zram0 partition"));
+fn hibernate_is_offered_with_adequate_disk_swap() {
+    // La condición es una: swap no-zram >= RAM. Lo de restaurar lo resuelve el
+    // initrd escribiendo /sys/power/resume, no el cmdline.
+    assert!(can_hibernate("/dev/nvme0n1p3 partition 16777216 0 -2", 16000000));
+    assert!(!can_hibernate("/dev/nvme0n1p3 partition 4000000 0 -2", 16000000));
+    // Justo igual basta.
+    assert!(can_hibernate("/dev/sda2 partition 16000000 0 -2", 16000000));
 }
 
 #[test]
-fn hibernate_is_offered_never_when_proc_is_unreadable() {
-    // Si no se puede leer, se asume que no puede: nunca ofrecer algo que podría
-    // dejar la sesión a medias.
-    assert!(!can_hibernate(None, ""));
+fn hibernate_is_hidden_when_swap_is_too_small() {
+    assert!(!can_hibernate("/dev/sda2 partition 8000000 0 -2", 16000000));
+}
+
+#[test]
+fn hibernate_is_hidden_without_swap() {
+    // Sin ningún swap no hay dónde escribir la imagen.
+    assert!(!can_hibernate("", 16000000));
+    assert!(!can_hibernate("Filename Type Size Used Priority", 16000000));
+}
+
+#[test]
+fn hibernate_does_not_depend_on_resume_in_the_cmdline() {
+    // Regresión: exigir `resume=` en /proc/cmdline ocultaba la capacidad en NixOS,
+    // donde el initrd escribe /sys/power/resume desde swapDevices. La laptop
+    // puede hibernar con el cmdline sin `resume=`.
+    let laptop_swaps = "/dev/nvme0n1p3 partition 16777216 0 -2";
+    assert!(can_hibernate(laptop_swaps, 16000000));
+    assert!(!mem_total_kib("MemTotal:       16000000 kB").is_none());
 }
 
 #[test]
 fn zram_does_not_count_as_a_hibernate_backing_store() {
-    let swaps = "/dev/zram0 partition 16393724 7722392 100";
-    assert!(!has_disk_swap(swaps));
+    let only_zram = "/dev/zram0 partition 16393724 7722392 100";
+    assert!(!has_adequate_swap(1_000, only_zram));
     let mixed = "/dev/zram0 partition 16393724 7722392 100\n/dev/nvme0n1p3 partition 16777216 0 -2";
-    assert!(has_disk_swap(mixed));
-    assert!(!has_disk_swap(""));
+    assert!(has_adequate_swap(16_000_000, mixed));
+    assert!(!has_adequate_swap(1_000, ""));
 }
 
 #[test]
@@ -544,8 +558,6 @@ fn zram_never_counts_even_when_it_is_large() {
 
 #[test]
 fn hibernate_is_hidden_when_the_only_swap_is_zram() {
-    // Este es el caso real de nixos-pc.
-    let cmdline = "root=/dev/nvme0n1p2 quiet splash";
-    let swaps = "/dev/zram0 partition 16393724 7578244 100";
-    assert!(!can_hibernate_with_swap_size(Some(cmdline), swaps, 32788184));
+    // Caso real de nixos-pc: MemTotal 32788184 KiB y sólo zram.
+    assert!(!can_hibernate("/dev/zram0 partition 16393724 7578244 100", 32788184));
 }
