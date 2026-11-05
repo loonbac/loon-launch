@@ -16,10 +16,11 @@ pub fn requires_hold(exec: &str) -> bool {
     }
     // Se compara por la acción real del sistema, no por el texto visible: el
     // nombre de la etiqueta puede cambiar sin alterar el comportamiento.
-    const DISRUPTIVE: [&str; 4] = [
+    const DISRUPTIVE: [&str; 5] = [
         "systemctl poweroff",
         "systemctl reboot",
         "systemctl suspend",
+        "systemctl hibernate",
         "loginctl lock-session",
     ];
     DISRUPTIVE.contains(&exec)
