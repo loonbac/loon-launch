@@ -2,19 +2,25 @@
 
 ## Specs
 
-- **S1** «Hibernar» aparece en el menú de poder **sólo si** el host puede
-  hibernar de verdad, y eso exige **las dos** condiciones:
-  - `resume=` presente en `/proc/cmdline`, y
-  - al menos un swap que **no** sea zram (en `/proc/swaps`), es decir respaldo
-    en disco que sobrevive al apagado.
+- **S1** «Hibernar» aparece en el menú de poder **sólo si** existe al menos un
+  swap que **no** sea zram y cuyo tamaño cubra la RAM (`MemTotal` de
+  `/proc/meminfo`). zram no cuenta: vive en RAM y su contenido desaparece al
+  apagar. Un swap menor que la RAM puede abortar la operación a mitad.
 
-- **S2** Si falta cualquiera de las dos, la entrada no aparece. El estado actual de
-  las dos máquinas es: `nixos-pc` sólo tiene zram → sin entrada; laptop tiene
-  swap de disco pero no `resume=` → sin entrada hasta que se configure.
+- **S2** El estado actual de las dos máquinas: `nixos-pc` sólo tiene zram
+  (16.3 G contra 31 GiB de RAM) → sin entrada; laptop tiene 16.8 G de swap en
+  disco contra 15.3 G de RAM → **con** entrada.
 
-- **S3** La detección es tolerante a fallos: si `/proc/cmdline` o `/proc/swaps`
-  no se pueden leer, se asume «no puede hibernar» y la entrada no aparece. Nunca
-  se ofrece una acción que podría no completarse.
+- **S2b** **No** se exige `resume=` en `/proc/cmdline`. El initrd de NixOS deriva
+  `resumeDevices` de `swapDevices` y escribe el `major:minor` en
+  `/sys/power/resume` antes de montar el sistema, así que el cmdline no lleva
+  `resume=` en esta configuración. Igual para `boot.resumeDevice`, que según su
+  propia descripción es para swap **files**, no para particiones. Exigirlo
+  ocultaba la capacidad en la laptop, que sí puede hibernar hoy.
+
+- **S3** La detección es tolerante a fallos: si `/proc/swaps` no se puede leer,
+  no hay swap que cumpla y la entrada no aparece. Si `MemTotal` no se puede
+  leer, no se descarta por tamaño (no se oculta lo que no se pudo medir).
 
 - **S4** El resto del menú no cambia, y las acciones que exigen mantener `Enter`
   siguen exigiéndolo (Hibernar también, cuando aparezca: es disruptiva).
@@ -33,6 +39,17 @@
 > Condicional a la capacidad del host
 
 **L2** Corrección que la motivó (sesión `.nixos`, verbatim):
+
+**L3** Corrección sobre el mecanismo de restauración (sesión `.nixos`):
+
+> NixOS deriva `resumeDevices` de `swapDevices` automáticamente, excluyendo zram
+> y cifrado (`stage-1.nix`). La laptop califica, así que el initrd ya escribe en
+> `/sys/power/resume`. Y `boot.resumeDevice` **no aplica**: es para swap files.
+
+Verificado en el stage-1 real (`/nix/store/ajhl56x6rk7a6xa49fs09cysya36ghp3-stage-1-init.sh`),
+que contiene el UUID de swap de la laptop y escribe `$resumeMajor:$resumeMinor`
+en `/sys/power/resume`. Además `boot.resumeDevice` ya estaba declarado en
+`hosts/loon-laptop/platform.nix`.
 
 > La laptop **tiene swap de disco suficiente**. Hibernar sería viable si se
 > añadiera `resume=`; hoy no funciona, pero por configuración, no por hardware —
