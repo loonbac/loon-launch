@@ -6,7 +6,9 @@ use crate::filter::{
     SearchMode, HOLD_MS,
 };
 use crate::models::Item;
-use crate::power::{can_hibernate, has_disk_swap};
+use crate::power::{
+    can_hibernate, can_hibernate_with_swap_size, has_adequate_swap, has_disk_swap,
+};
 use crate::ui::layout::ROWS;
 use crate::ui::parse_logical_size;
 
@@ -518,4 +520,32 @@ fn zram_does_not_count_as_a_hibernate_backing_store() {
 fn hibernate_requires_a_hold_like_the_other_disruptive_actions() {
     // Cuando la entrada aparece, es tan disruptiva como apagar o suspender.
     assert!(requires_hold("systemctl hibernate"));
+}
+
+#[test]
+fn hibernate_needs_a_swap_at_least_as_large_as_ram() {
+    // Una imagen de hibernación ocupa como la RAM en uso: un swap menor puede
+    // quedarse corto y abortar la operación a mitad.
+    let mem = 16_000_000; // KiB
+    assert!(has_adequate_swap(mem, "/dev/nvme0n1p3 partition 16777216 0 -2"));
+    assert!(!has_adequate_swap(mem, "/dev/nvme0n1p3 partition 4000000 0 -2"));
+    // Justo igual basta.
+    assert!(has_adequate_swap(mem, "/dev/sda2 partition 16000000 0 -2"));
+}
+
+#[test]
+fn zram_never_counts_even_when_it_is_large() {
+    // zram vive en RAM: aunque sea enorme, no sobrevive al apagado.
+    assert!(!has_adequate_swap(
+        1_000,
+        "/dev/zram0 partition 999999999 0 100"
+    ));
+}
+
+#[test]
+fn hibernate_is_hidden_when_the_only_swap_is_zram() {
+    // Este es el caso real de nixos-pc.
+    let cmdline = "root=/dev/nvme0n1p2 quiet splash";
+    let swaps = "/dev/zram0 partition 16393724 7578244 100";
+    assert!(!can_hibernate_with_swap_size(Some(cmdline), swaps, 32788184));
 }
