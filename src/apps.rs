@@ -152,11 +152,13 @@ fn parse_desktop(path: &Path) -> Option<Item> {
 }
 
 pub fn power_actions() -> Vec<Item> {
+    // Sin «Hibernar»: esta máquina no tiene `resume=` en el cmdline y su único
+    // swap es zram (volátil), así que no habría imagen que restaurar. Ofrecerlo
+    // prometería algo que no ocurre y arriesgaría trabajo abierto.
     vec![
         Item::app("Cambiar fondo de pantalla", "wallpaper-mode", "preferences-desktop-wallpaper"),
         Item::app("Apagar", "systemctl poweroff", "system-shutdown"),
         Item::app("Reiniciar", "systemctl reboot", "system-reboot"),
-        Item::app("Hibernar", "systemctl hibernate", "system-suspend-hibernate"),
         Item::app("Suspender", "systemctl suspend", "system-suspend"),
         Item::app("Bloquear", "loginctl lock-session", "system-lock-screen"),
     ]
