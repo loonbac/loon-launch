@@ -83,9 +83,12 @@ pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
                     glib::Propagation::Stop
                 }
                 Key::Tab | Key::ISO_Left_Tab if wallpaper_mode => {
+                    // Alterna animados/estáticos dentro del selector. El modo
+                    // sigue siendo fondos: no se toca el texto del Entry.
                     let show_static = !*state.grid_refs.wallpaper_static.borrow();
+                    state.grid_refs.set_wallpaper_mode(true, show_static);
                     *state.sel_idx.borrow_mut() = 0;
-                    state.entry.set_text(if show_static { "#!" } else { "#" });
+                    state.entry.set_text("");
                     state.grid_refs.scrolled.grab_focus();
                     glib::Propagation::Stop
                 }

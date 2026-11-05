@@ -2,7 +2,7 @@
 use crate::apps::{data_dirs, power_actions};
 use crate::filter::{
     apply_backspace, apply_char, filter_items, move_sel_grid, move_sel_rowwise, move_selection,
-    move_selection_wrap, normalize_selection,
+    move_selection_wrap, normalize_selection, SearchMode,
 };
 use crate::models::Item;
 use crate::ui::layout::ROWS;
@@ -23,7 +23,7 @@ fn power() -> Vec<Item> {
 #[test]
 fn filter_matches_by_name_case_insensitive() {
     let apps = vec![app("Firefox"), app("Ghostty"), app("VS Code")];
-    let got = filter_items(&apps, &power(), &[], "fire");
+    let got = filter_items(&apps, &power(), &[], "fire", SearchMode::Apps);
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].name, "Firefox");
 }
@@ -31,28 +31,34 @@ fn filter_matches_by_name_case_insensitive() {
 #[test]
 fn filter_empty_query_returns_all() {
     let apps = vec![app("A"), app("B")];
-    let got = filter_items(&apps, &power(), &[], "");
+    let got = filter_items(&apps, &power(), &[], "", SearchMode::Apps);
     assert_eq!(got.len(), 2);
 }
 
 #[test]
 fn filter_power_mode_prefix() {
     let apps = vec![app("Firefox")];
-    let got = filter_items(&apps, &power(), &[], ">apag");
+    let got = filter_items(&apps, &power(), &[], ">apag", SearchMode::Apps);
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].name, "Apagar");
 }
 
 #[test]
 fn filter_power_empty_shows_all_power() {
-    let got = filter_items(&[], &power(), &[], ">");
+    let got = filter_items(&[], &power(), &[], ">", SearchMode::Apps);
     assert_eq!(got.len(), power().len());
 }
 
 #[test]
-fn filter_wallpaper_mode_prefix() {
+fn wallpaper_mode_filters_by_name_without_a_prefix() {
     let wps = vec![wallpaper("▶ reze.mp4", true), wallpaper("🖼 Asa.png", false)];
-    let got = filter_items(&[], &[], &wps, "#reze");
+    let got = filter_items(
+        &[],
+        &[],
+        &wps,
+        "reze",
+        SearchMode::Wallpapers { static_only: false },
+    );
     assert_eq!(got.len(), 1);
     assert!(got[0].name.contains("reze"));
 }
@@ -60,12 +66,47 @@ fn filter_wallpaper_mode_prefix() {
 #[test]
 fn wallpaper_tabs_separate_animated_and_static_lists() {
     let wps = vec![wallpaper("▶ a.mp4", true), wallpaper("🖼 b.png", false)];
-    let animated = filter_items(&[], &[], &wps, "#");
-    let static_images = filter_items(&[], &[], &wps, "#!");
+    let animated = filter_items(
+        &[],
+        &[],
+        &wps,
+        "",
+        SearchMode::Wallpapers { static_only: false },
+    );
+    let static_images = filter_items(
+        &[],
+        &[],
+        &wps,
+        "",
+        SearchMode::Wallpapers { static_only: true },
+    );
     assert_eq!(animated.len(), 1);
     assert_eq!(animated[0].name, "▶ a.mp4");
     assert_eq!(static_images.len(), 1);
     assert_eq!(static_images[0].name, "🖼 b.png");
+}
+
+#[test]
+fn typing_hash_does_not_open_the_wallpaper_picker() {
+    // `#` es un carácter normal: filtra apps por nombre y, como ninguna app se
+    // llama `#`, el resultado queda vacío. Nunca devuelve fondos.
+    let apps = vec![app("Firefox"), app("Ghostty")];
+    let wps = vec![wallpaper("▶ reze.mp4", true), wallpaper("🖼 Asa.png", false)];
+    for q in ["#", "#!", "#reze"] {
+        let got = filter_items(&apps, &power(), &wps, q, SearchMode::Apps);
+        assert!(
+            got.iter().all(|it| !it.is_wallpaper),
+            "la query {q:?} devolvió fondos desde el modo apps"
+        );
+        assert!(got.is_empty(), "la query {q:?} debía quedar vacía");
+    }
+}
+
+#[test]
+fn power_prefix_still_opens_power_actions() {
+    let got = filter_items(&[], &power(), &[], ">", SearchMode::Apps);
+    assert_eq!(got.len(), power().len());
+    assert!(got.iter().all(|it| !it.is_wallpaper));
 }
 
 #[test]

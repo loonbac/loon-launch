@@ -144,11 +144,12 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
     let sel_idx = Rc::new(RefCell::new(0));
     SEL_IDX.with(|s| *s.borrow_mut() = Some(sel_idx.clone()));
     apply_chrome(&window, &banner, wallpaper_mode);
+    grid_refs.set_wallpaper_mode(wallpaper_mode, false);
     let current_items = Rc::new(RefCell::new(grid_refs.repopulate(
         &all_apps.borrow(),
         &power.borrow(),
         &wallpapers.borrow(),
-        if wallpaper_mode { "#" } else { "" },
+        "",
         &sel_idx,
         false,
     )));
@@ -162,17 +163,13 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
         let wallpapers = wallpapers.clone();
         let current_items = current_items.clone();
         let sel_idx = sel_idx.clone();
-        let banner = banner.clone();
-        let window = window.clone();
         move |entry| {
             let q = entry.text().to_string();
-            let wallpaper = q.starts_with('#');
-            let mode_changed = *grid_refs.wallpaper_mode.borrow() != wallpaper;
+            // El modo lo decide la UI (acción `>` o el arranque en modo fondos),
+            // nunca lo tecleado: `#` filtra como texto normal.
+            let wallpaper = *grid_refs.wallpaper_mode.borrow();
             let category_changed = wallpaper
                 && *grid_refs.wallpaper_static.borrow() != q.starts_with("#!");
-            if mode_changed {
-                apply_chrome(&window, &banner, wallpaper);
-            }
             let apps = all_apps.borrow();
             let power = power.borrow();
             let wallpapers = wallpapers.borrow();
@@ -183,15 +180,8 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
                     &wallpapers,
                     &q,
                     &sel_idx,
-                    mode_changed || category_changed,
+                    category_changed,
                 );
-            if mode_changed {
-                // Al entrar desde la acción del launcher la ventana ya está
-                // mapeada. Niri conserva su esquina superior izquierda al
-                // redimensionarla, así que hay que esperar el configure del
-                // tamaño nuevo antes de recentrarla.
-                schedule_center_window();
-            }
         }
     });
 
@@ -202,7 +192,7 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
         let current_items = current_items.clone();
         let sel_idx = sel_idx.clone();
         Rc::new(move || {
-            // Extraer la acción con el borrow ACOTADO: set_text("#") dispara
+            // Extraer la acción con el borrow ACOTADO: set_text("") dispara
             // el signal changed, que re-puebla el grid y hace borrow_mut de
             // current_items; si el borrow inmutable siguiera activo aquí,
             // paniquea (BorrowMutError) y la app crashea.
@@ -349,14 +339,8 @@ fn present_and_focus(window: &gtk4::ApplicationWindow, wallpaper_mode: bool) {
         g.borrow()
             .as_ref()
             .map(|grid_refs| {
-                grid_refs.repopulate(
-                    &apps,
-                    &power,
-                    &wallpapers,
-                    if wallpaper_mode { "#" } else { "" },
-                    &sel_idx,
-                    true,
-                )
+                grid_refs.set_wallpaper_mode(wallpaper_mode, false);
+                grid_refs.repopulate(&apps, &power, &wallpapers, "", &sel_idx, true)
             })
             .unwrap_or_default()
     });
@@ -400,9 +384,7 @@ fn present_and_focus(window: &gtk4::ApplicationWindow, wallpaper_mode: bool) {
     });
     BANNER.with(|b| {
         if let Some(banner) = b.borrow().as_ref() {
-            banner
-                .entry
-                .set_text(if wallpaper_mode { "#" } else { "" });
+            banner.entry.set_text("");
             if wallpaper_mode {
                 // El banner (y el Entry) están ocultos: enfocar el grid.
                 GRID_REFS.with(|g| {
@@ -437,7 +419,8 @@ fn switch_to_wallpaper(window: &gtk4::ApplicationWindow, entry: &gtk4::Entry) {
         Some(Box::new(move || {
             win.hide();
             win.set_opacity(0.0);
-            entry.set_text("#");
+            // Sin prefijo: el selector se abre por estado, no por lo tecleado.
+            entry.set_text("");
 
             // Deja que GTK calcule el request 1400x590 antes de crear otra vez
             // la superficie Wayland.
