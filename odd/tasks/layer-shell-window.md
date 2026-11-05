@@ -45,29 +45,34 @@ no ocupe ni cree workspace en niri, sin cambiar nada más de la app.
 ## Corrección de la revisión nativa (R3-001 / R4-001)
 
 Las lentes `reliability` y `resilience` reportaron como CRITICAL que
-`KeyboardMode::Exclusive` retiene el foco de teclado y anula el
-ocultar-al-perder-foco. El refuter los corroboró por inferencia, con
-`probe unavailable on pi`: nadie lo midió.
+`KeyboardMode::Exclusive` retiene el foco y anula el ocultar-al-perder-foco.
+**Los hallazgos eran correctos.**
 
-**Medido en niri** (launch -> `niri msg action focus-window` a otra ventana):
+Mi primera verificación los declaró falsos positivos y estaba mal hecha: contaba
+ventanas con `niri msg -j windows` filtrando por `app_id`, pero una superficie
+layer nunca aparece en esa lista. La prueba devolvía `0` tanto con la capa
+abierta como cerrada: no podía fallar, y por eso no demostraba nada.
 
-```
-antes:  focused = dev.loonbac.loonlaunch
-después: focused = chrome-...-Default
-superficies loon-launch mapeadas: 0
-```
+Con `EventControllerFocus::connect_leave` instrumentado y `niri msg layers`:
 
-El compositor sí retira el foco y el launcher se desmapea: **falso positivo**.
-La consecuencia práctica de aplicar la corrección propuesta: con `OnDemand` la
-superficie no recibe el teclado al aparecer (el default del protocolo es `None`
-y `OnDemand` enfoca sólo tras un clic), así que la entrada de búsqueda deja de
-escribirse. Con `None`, lo mismo.
+| modo | `leave` se emite | la capa se oculta |
+| :--- | :--- | :--- |
+| `Exclusive` | nunca | no; queda encima de todo |
+| `OnDemand` | sí | sí (`hide_window` la desmapea) |
 
-Lo que sí faltaba, y es el hueco real que R3-001 señala, es que la prueba
-cubría sólo la función pura `use_overlay` y no la configuración que `apply`
-aplica. Ahora `overlay::CONFIG` declara capa, modo de teclado, zona exclusiva y
-namespace como dato, y `apply` la consume; la prueba la afirma y falla si el
-modo cambia a `OnDemand`.
+niri no retira el foco a una capa de overlay con teclado exclusivo. El launcher
+queda pegado encima de la ventana activa y sólo se cierra con su propio toggle.
+El dueño del repositorio lo confirmó en su sesión real: «actualmente se queda
+abierto al dar click fuera».
 
-Evidencia: `cargo test` -> 27 pasan (RED observado al forzar `OnDemand` en
-`CONFIG`, GREEN restaurado).
+La segunda afirmación mía, que `OnDemand` rompía la escritura, también era
+falsa: tecleando con `wtype` sobre la superficie abierta el texto aparece en la
+entrada.
+
+Corrección aplicada: `CONFIG.keyboard = KeyboardMode::OnDemand`. La prueba
+`overlay_applies_on_demand_keyboard_on_the_overlay_layer` lo fija y falla si
+vuelve a `Exclusive` (RED observado).
+
+Nota de método: al medir comportamiento de capas hay que usar `niri msg layers`,
+no el listado de ventanas, y hay que comprobar que el servicio del sistema no
+esté interceptando el binario de prueba por D-Bus.

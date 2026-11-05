@@ -25,7 +25,8 @@ use crate::ui::grid::{build_grid, GridRefs};
 use crate::ui::keys::setup_key_controller;
 use crate::ui::styles::setup_styles;
 use crate::wallpapers::wallpapers;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::time::Instant;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -51,7 +52,18 @@ thread_local! {
     // Última animación de opacidad: hay que retenerla o se cancela al dropear.
     static OPACITY_ANIM: RefCell<Option<adw::TimedAnimation>> = RefCell::new(None);
     static HIDING: RefCell<bool> = RefCell::new(false);
+    // Instante en que la superficie se presentó. Con teclado on-demand el
+    // compositor entrega el foco justo después del mapeo, y un `leave` llega
+    // antes de que la ventana esté asentada: cerrar ahí hace que el launcher
+    // parpadee y desaparezca solo al abrirlo. Sólo un `leave` posterior a esta
+    // ventana de gracia es una pérdida de foco real.
+    static SHOWN_AT: Cell<Option<Instant>> = Cell::new(None);
 }
+
+/// Gracia tras presentar la superficie antes de aceptar un `leave` como
+/// pérdida de foco real. Cubre el `leave` que el compositor emite al retirar el
+/// foco de la ventana anterior, antes de entregárselo a esta.
+const SETTLE: Duration = Duration::from_millis(250);
 
 /// Arma la UI (oculta) la primera vez y alterna visibilidad en cada activate.
 /// Si `wallpaper_mode` es true, abre directo en el selector de fondos ('#').
@@ -268,9 +280,17 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
             if HIDING.with(|h| *h.borrow()) {
                 return;
             }
+            // Con teclado on-demand el compositor entrega el foco justo después
+            // del mapeo; un `leave` inmediato pertenece a la ventana anterior.
+            // Sólo un `leave` posterior a la ventana de gracia es una pérdida
+            // de foco real, y es la que cierra el launcher.
             let win = window.clone();
             glib::timeout_add_local_once(Duration::from_millis(120), move || {
-                if win.is_visible() && !win.is_active() {
+                let settled = SHOWN_AT
+                    .with(|s| s.get())
+                    .map(|shown| shown.elapsed() >= SETTLE)
+                    .unwrap_or(false);
+                if win.is_visible() && !win.is_active() && settled {
                     hide_window(&win);
                 }
             });
@@ -293,6 +313,7 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
 /// conservaría los items viejos).
 fn present_and_focus(window: &gtk4::ApplicationWindow, wallpaper_mode: bool) {
     HIDING.with(|h| *h.borrow_mut() = false);
+    SHOWN_AT.with(|s| s.set(Some(Instant::now())));
     let fresh_apps = load_apps();
     let power = power_actions();
     let fresh_wallpapers = wallpapers();

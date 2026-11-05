@@ -295,15 +295,16 @@ fn overlay_is_used_only_on_wayland_with_layer_shell_support() {
 }
 
 #[test]
-fn overlay_applies_exclusive_keyboard_on_the_overlay_layer() {
+fn overlay_applies_on_demand_keyboard_on_the_overlay_layer() {
     use gtk4_layer_shell::{KeyboardMode, Layer};
     use crate::ui::overlay::{CONFIG, NAMESPACE};
 
-    // R3-001/R4-001: los hallazgos afirmaban que el teclado exclusivo impide
-    // ocultar al perder foco. Medido en niri: el compositor sí retira el foco y
-    // el launcher se desmapea. El exclusivo es necesario para escribir al
-    // abrir; la prueba fija la configuración que `apply` aplica de verdad.
-    assert_eq!(CONFIG.keyboard, KeyboardMode::Exclusive);
+    // R3-001/R4-001 eran correctos: con `Exclusive` el compositor no retira el
+    // foco, `EventControllerFocus` nunca emite `leave` y la capa queda encima de
+    // todo. Medido en niri: `leave` no se emite y `niri msg layers` sigue
+    // contando la capa. Con `OnDemand` sí se emite y la capa desaparece, y la
+    // entrada sigue recibiendo teclado (verificado con wtype).
+    assert_eq!(CONFIG.keyboard, KeyboardMode::OnDemand);
     assert_eq!(CONFIG.layer, Layer::Overlay);
     assert_eq!(CONFIG.exclusive_zone, 0);
     assert_eq!(CONFIG.namespace, NAMESPACE);

@@ -39,14 +39,19 @@ pub struct Config {
 
 /// La superficie es un overlay modal que no reserva espacio.
 ///
-/// Teclado exclusivo porque la escritura va a la entrada en cuanto el launcher
-/// aparece, sin un clic previo. Comprobado en niri: el compositor sí retira el
-/// foco al enfocar otra ventana, así que el ocultar-al-perder-foco sigue
-/// disparando. `OnDemand` rompe la escritura al abrir (no hay foco hasta el
-/// primer clic) y `None` deja la entrada inservible.
+/// Teclado *on-demand*, no exclusivo. Medido en niri con la ventana ya abierta y
+/// `niri msg action focus-window` hacia otra ventana:
+///
+/// - `Exclusive`: el compositor no retira el foco, `EventControllerFocus` nunca
+///   emite `leave` y la capa queda encima de todo de forma permanente. El
+///   launcher sólo se cierra con su propio toggle.
+/// - `OnDemand`: el compositor sí transfiere el foco, `leave` se emite y
+///   `hide_window` desmapea la capa. La escritura sigue funcionando: verificado
+///   tecleando en la entrada con `wtype`, el texto aparece.
+/// - `None`: la superficie no recibe teclado y la entrada no se puede usar.
 pub const CONFIG: Config = Config {
     layer: Layer::Overlay,
-    keyboard: KeyboardMode::Exclusive,
+    keyboard: KeyboardMode::OnDemand,
     exclusive_zone: 0,
     namespace: NAMESPACE,
 };
