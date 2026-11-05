@@ -108,9 +108,7 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
     window.set_size_request(WIN_W, WIN_H);
     // En Wayland con soporte del compositor la ventana pasa a ser superficie de
     // capa: así abrir el launcher no ocupa (ni crea) un workspace.
-    if !overlay::apply(&window) {
-        eprintln!("loon-launch: layer-shell unavailable; using a regular window");
-    }
+    overlay::apply(&window);
 
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     vbox.set_size_request(WIN_W, WIN_H);
