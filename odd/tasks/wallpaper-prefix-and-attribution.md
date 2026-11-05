@@ -22,9 +22,9 @@
 
 | ID | Spec | Ruta | Commit |
 | --- | --- | --- | --- |
-| T1 | S1 | `src/filter.rs`, `src/ui/grid.rs`, `src/ui/keys.rs` | — |
-| T2 | S2 | `src/filter.rs`, `src/ui/grid.rs`, `src/ui/mod.rs` | — |
-| T3 | S3 | `THIRD-PARTY.md`, `README.md` | — |
+| T1 | S1 | `src/filter.rs`, `src/ui/grid.rs`, `src/ui/keys.rs` | `576cad0` |
+| T2 | S2 | `src/filter.rs`, `src/ui/grid.rs`, `src/ui/mod.rs` | `576cad0` |
+| T3 | S3 | `THIRD-PARTY.md`, `README.md` | `bd72510` |
 
 ## Log
 
