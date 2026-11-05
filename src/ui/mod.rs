@@ -6,6 +6,7 @@
 mod banner;
 mod carousel;
 mod grid;
+pub mod headers;
 pub mod layout;
 mod keys;
 pub mod palette;
@@ -339,6 +340,27 @@ fn present_and_focus(window: &gtk4::ApplicationWindow, wallpaper_mode: bool) {
             *items.borrow_mut() = shown;
         }
     });
+
+    // Cada apertura estrena cabecera: al azar entre las que combinan con el
+    // acento del wallpaper.
+    if !wallpaper_mode {
+        let accent = palette::system_accent();
+        let roll = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs() ^ u64::from(elapsed.subsec_nanos()))
+            .unwrap_or(0);
+        // Se prueban las candidatas hasta que una imagen se decodifique.
+        let candidates = headers::candidates_for_accent(accent.as_deref(), roll);
+        BANNER.with(|b| {
+            if let Some(banner) = b.borrow().as_ref() {
+                for path in &candidates {
+                    if banner.show_header(path) {
+                        break;
+                    }
+                }
+            }
+        });
+    }
 
     window.set_opacity(0.0);
     window.present();
