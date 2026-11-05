@@ -23,9 +23,9 @@
 
 | ID | Spec | Ruta | Commit |
 | --- | --- | --- | --- |
-| T1 | S1 | `src/apps.rs`, `src/tests.rs` | — |
-| T2 | S2, S3 | `src/ui/keys.rs`, `src/ui/mod.rs`, `src/filter.rs` | — |
-| T3 | S4 | `src/ui/grid.rs`, `src/ui/styles.rs` | — |
+| T1 | S1 | `src/apps.rs`, `src/tests.rs` | `ecdc755` |
+| T2 | S2, S3 | `src/ui/keys.rs`, `src/ui/mod.rs`, `src/filter.rs` | `ecdc755` |
+| T3 | S4 | `src/ui/grid.rs`, `src/ui/styles.rs` | `ecdc755` |
 
 ## Log
 
