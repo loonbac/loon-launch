@@ -25,6 +25,7 @@ pub fn host_can_hibernate() -> bool {
 ///
 /// `cmdline` es `None` si no se pudo leer, y entonces se asume que no puede
 /// hibernar: ante la duda, no se ofrece la acción.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn can_hibernate(cmdline: Option<&str>, swaps: &str) -> bool {
     let Some(cmdline) = cmdline else {
         return false;
@@ -106,6 +107,7 @@ pub fn has_resume_arg(cmdline: &str) -> bool {
 ///
 /// Se usa para la comprobación sin tamaño; con tamaño disponible preferir
 /// [`has_adequate_swap`], que además exige cubrir la RAM.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn has_disk_swap(swaps: &str) -> bool {
     swap_entries(swaps).any(|entry| !entry.device.starts_with("/dev/zram"))
 }
