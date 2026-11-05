@@ -561,3 +561,12 @@ fn hibernate_is_hidden_when_the_only_swap_is_zram() {
     // Caso real de nixos-pc: MemTotal 32788184 KiB y sólo zram.
     assert!(!can_hibernate("/dev/zram0 partition 16393724 7578244 100", 32788184));
 }
+
+#[test]
+fn zram_is_rejected_by_name_because_its_type_looks_like_a_disk() {
+    // /proc/swaps reporta zram con TYPE=partition, igual que un swap real. Si se
+    // filtrara por tipo, este caso habilitaría Hibernar en una máquina que no
+    // puede hibernar: Peor que ocultarlo.
+    let real_pc_line = "/dev/zram0 partition 16393724 7578244 100";
+    assert!(!has_adequate_swap(1_000, real_pc_line));
+}

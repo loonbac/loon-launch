@@ -46,6 +46,10 @@ pub fn mem_total_kib(meminfo: &str) -> Option<u64> {
 /// respaldo. Con `mem_total_kib == 0` sólo se exige que exista (no hay cota).
 pub fn has_adequate_swap(mem_total_kib: u64, swaps: &str) -> bool {
     swap_entries(swaps).any(|entry| {
+        // El tipo no sirve para distinguirlos: zram se reporta como
+        // `partition`, igual que un swap de disco real (`/proc/swaps` de esta
+        // máquina lo confirma). Filtrar por nombre es lo correcto, con el límite
+        // de que un zram con otro nombre pasaría.
         let is_disk = !entry.device.starts_with("/dev/zram");
         let big_enough = mem_total_kib == 0 || entry.size_kib >= mem_total_kib;
         is_disk && big_enough
