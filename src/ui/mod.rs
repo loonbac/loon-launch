@@ -70,7 +70,7 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// Si `wallpaper_mode` es true, abre directo en el selector de fondos ('#').
 pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
     let fresh_apps = load_apps();
-    let fresh_power = power_actions();
+    let fresh_power = power_actions(crate::power::host_can_hibernate());
     let fresh_wallpapers = wallpapers();
 
     if let Some(win) = WINDOW.with(|w| w.borrow().clone()) {
@@ -322,7 +322,7 @@ fn present_and_focus(window: &gtk4::ApplicationWindow, wallpaper_mode: bool) {
     HIDING.with(|h| *h.borrow_mut() = false);
     SHOWN_AT.with(|s| s.set(Some(Instant::now())));
     let fresh_apps = load_apps();
-    let power = power_actions();
+    let power = power_actions(crate::power::host_can_hibernate());
     let fresh_wallpapers = wallpapers();
     ALL_APPS.with(|a| {
         if let Some(apps_rc) = a.borrow().as_ref() {

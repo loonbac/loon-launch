@@ -151,7 +151,15 @@ fn parse_desktop(path: &Path) -> Option<Item> {
     Some(Item::app(name, exec, icon))
 }
 
-pub fn power_actions() -> Vec<Item> {
+/// Acciones de poder para el menú `>`.
+///
+/// `can_hibernate` se **inyecta** en vez de leerse aquí dentro: esta función es
+/// pura y debe dar el mismo resultado para los mismos argumentos. Si leyera
+/// `/proc` por su cuenta, el `drv` dependería del host que compila y el mismo
+/// store no se podría construir en otra máquina (y un test que afirme «no
+/// ofrece Hibernar» pasaría o fallaría según dónde se compile). El llamador pasa
+/// `power::host_can_hibernate()` en runtime.
+pub fn power_actions(can_hibernate: bool) -> Vec<Item> {
     // «Hibernar» sólo aparece si el host puede de verdad: `resume=` en el cmdline
     // y un swap que no sea zram. Sin eso no hay imagen que restaurar y ofrecerlo
     // arriesgaría el trabajo abierto del usuario.
@@ -162,7 +170,7 @@ pub fn power_actions() -> Vec<Item> {
         Item::app("Suspender", "systemctl suspend", "system-suspend"),
         Item::app("Bloquear", "loginctl lock-session", "system-lock-screen"),
     ];
-    if crate::power::host_can_hibernate() {
+    if can_hibernate {
         items.insert(
             4,
             Item::app("Hibernar", "systemctl hibernate", "system-suspend-hibernate"),
