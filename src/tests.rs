@@ -18,8 +18,12 @@ fn wallpaper(name: &str, animated: bool) -> Item {
     Item::wallpaper(name, "true", "/tmp/thumb.jpg").with_animated_wallpaper(animated)
 }
 
+/// Capacidad fija para los tests: nunca se lee `/proc` aquí, o el resultado
+/// dependería de la máquina que compila.
+const HIBERNATE: bool = false;
+
 fn power() -> Vec<Item> {
-    power_actions()
+    power_actions(HIBERNATE)
 }
 
 #[test]
@@ -112,14 +116,29 @@ fn power_prefix_still_opens_power_actions() {
 }
 
 #[test]
-fn power_menu_does_not_offer_hibernate() {
-    // Esta máquina no puede hibernar: no hay `resume=` en el cmdline y el único
-    // swap es zram (volátil). Ofrecerlo sería prometer algo que no ocurre.
-    let names: Vec<String> = power().iter().map(|it| it.name.clone()).collect();
+fn power_menu_hides_hibernate_when_the_host_cannot_hibernate() {
+    // Capacidad INYECTADA, nunca leída de /proc: si dependiera del host, este
+    // test pasaría en una máquina y fallaría en otra, y el drv dejaría de ser
+    // reproducible entre ellas.
+    let names: Vec<String> = power_actions(false).iter().map(|it| it.name.clone()).collect();
     assert!(
-        !names.iter().any(|n| n.contains("Hibernar")),
-        "el menú de poder no debe ofrecer Hibernar: {names:?}"
+        !names.iter().any(|n| n == "Hibernar"),
+        "un host sin swap adecuado no debe ver Hibernar: {names:?}"
     );
+}
+
+#[test]
+fn power_menu_offers_hibernate_when_the_host_can_hibernate() {
+    // La otra cara: con capacidad, la entrada está. Sin este caso, el menú
+    // podría quedarse sin Hibernar para siempre sin que nada lo note.
+    let names: Vec<String> = power_actions(true).iter().map(|it| it.name.clone()).collect();
+    assert!(
+        names.iter().any(|n| n == "Hibernar"),
+        "un host con swap adecuado debe ver Hibernar: {names:?}"
+    );
+    // Y en el orden del menú: entre Suspender y Bloquear.
+    let pos = |n: &str| names.iter().position(|x| x == n).unwrap_or(usize::MAX);
+    assert!(pos("Suspender") < pos("Hibernar") && pos("Hibernar") < pos("Bloquear"));
 }
 
 #[test]
