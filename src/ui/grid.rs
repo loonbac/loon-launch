@@ -28,6 +28,9 @@ pub struct GridRefs {
     pub media: Rc<RefCell<Vec<gtk4::MediaFile>>>,
     pub activate: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     pub cards: Rc<RefCell<Vec<Widget>>>,
+    /// Barras de confirmación, en paralelo a `cards`. `Overlay` no expone sus
+    /// overlays, así que se guardan aquí para no recrearlas en cada tick.
+    hold_bars: Rc<RefCell<Vec<gtk4::Box>>>,
     pub positions: Rc<RefCell<Vec<(i32, i32)>>>,
     enter_anims: Rc<RefCell<Vec<adw::TimedAnimation>>>,
     scroll_anims: Rc<RefCell<Vec<adw::TimedAnimation>>>,
@@ -65,6 +68,7 @@ impl GridRefs {
         self.pause_media();
         self.media.borrow_mut().clear();
         self.cards.borrow_mut().clear();
+        self.hold_bars.borrow_mut().clear();
         self.positions.borrow_mut().clear();
         for animation in self.enter_anims.borrow_mut().drain(..) {
             animation.pause();
@@ -152,7 +156,7 @@ impl GridRefs {
         let mut items_in_section = 0usize;
         let mut selectable_idx = 0i32;
         for (i, item) in shown.iter().enumerate() {
-            let (cell, _) = make_app_cell(item);
+            let (cell, bar) = make_app_cell(item);
             if item.is_header {
                 if items_in_section > 0 {
                     row = header_row + 1 + section_rows(items_in_section);
@@ -173,6 +177,11 @@ impl GridRefs {
                 // navegación de teclado en filter::move_sel_grid.
                 self.positions.borrow_mut().push((line, col));
                 self.cards.borrow_mut().push(cell.clone().upcast());
+                // Sólo las tarjetas seleccionables entran en `cards`, y sus
+                // barras entran aquí: ambos vectores quedan alineados por índice.
+                if let Some(bar) = bar {
+                    self.hold_bars.borrow_mut().push(bar);
+                }
                 if animate {
                     animate_enter(
                         &cell,
@@ -196,12 +205,15 @@ impl GridRefs {
             return;
         }
         let pct = pct.clamp(0.0, 1.0);
-        let cards = self.cards.borrow();
-        let Some(card) = (idx >= 0).then(|| cards.get(idx as usize)).flatten().cloned() else {
+        if idx < 0 {
+            return;
+        }
+        let Some(card) = self.cards.borrow().get(idx as usize).cloned() else {
             return;
         };
-        drop(cards);
-        let bar = self.hold_bar(&card);
+        let Some(bar) = self.hold_bar(idx as usize) else {
+            return;
+        };
         if pct <= 0.0 {
             card.remove_css_class("holding");
             bar.set_size_request(0, 3);
@@ -215,34 +227,10 @@ impl GridRefs {
         bar.set_size_request(width.max(1), 3);
     }
 
-    /// Devuelve la barra de progreso de una tarjeta, creándola la primera vez.
-    /// Se guarda en una lista paralela a `cards` para no tocar la estructura de
-    /// la fila (que es un `Box` con icono y etiqueta).
-    fn hold_bar(&self, card: &Widget) -> gtk4::Box {
-        let child = card
-            .clone()
-            .downcast::<ListBoxRow>()
-            .ok()
-            .and_then(|row| row.child())
-            .and_then(|c| c.downcast::<gtk4::Box>().ok());
-        if let Some(container) = child {
-            if let Some(existing) = container
-                .last_child()
-                .and_then(|c| c.downcast::<gtk4::Box>().ok())
-                .filter(|b| b.has_css_class("hold-bar"))
-            {
-                return existing;
-            }
-            let bar = gtk4::Box::new(Orientation::Horizontal, 0);
-            bar.add_css_class("hold-bar");
-            bar.set_halign(gtk4::Align::Start);
-            bar.set_valign(gtk4::Align::End);
-            bar.set_visible(false);
-            container.append(&bar);
-            bar
-        } else {
-            gtk4::Box::new(Orientation::Horizontal, 0)
-        }
+    /// Devuelve la barra de progreso de una tarjeta por índice. Se guarda en
+    /// una lista paralela a `cards` porque `Overlay` no expone sus overlays.
+    fn hold_bar(&self, idx: usize) -> Option<gtk4::Box> {
+        self.hold_bars.borrow().get(idx).cloned()
     }
 
     pub fn clear_hold(&self) {
@@ -250,12 +238,12 @@ impl GridRefs {
             return;
         }
         let cards = self.cards.borrow().clone();
-        for (idx, card) in cards.iter().enumerate() {
+        for card in cards.iter() {
             card.remove_css_class("holding");
-            let bar = self.hold_bar(card);
+        }
+        for bar in self.hold_bars.borrow().iter() {
             bar.set_size_request(0, 3);
             bar.set_visible(false);
-            let _ = idx;
         }
     }
 
@@ -415,6 +403,7 @@ pub fn build_grid() -> GridRefs {
         media: Rc::new(RefCell::new(Vec::new())),
         activate: Rc::new(RefCell::new(None)),
         cards: Rc::new(RefCell::new(Vec::new())),
+        hold_bars: Rc::new(RefCell::new(Vec::new())),
         positions: Rc::new(RefCell::new(Vec::new())),
         enter_anims: Rc::new(RefCell::new(Vec::new())),
         scroll_anims: Rc::new(RefCell::new(Vec::new())),
@@ -500,7 +489,7 @@ fn animate_enter(
     });
 }
 
-fn make_app_cell(item: &Item) -> (ListBoxRow, Option<gtk4::MediaFile>) {
+fn make_app_cell(item: &Item) -> (ListBoxRow, Option<gtk4::Box>) {
     let cell = ListBoxRow::new();
 
     if item.is_header {
@@ -551,6 +540,19 @@ fn make_app_cell(item: &Item) -> (ListBoxRow, Option<gtk4::MediaFile>) {
     label.add_css_class("app-name");
     hbox.append(&label);
 
-    cell.set_child(Some(&hbox));
-    (cell, None)
+    // La barra de confirmación vive en un Overlay sobre el contenido, no dentro
+    // del Box: como hijo del Box horizontal sería un tercer elemento al lado
+    // del icono y la etiqueta, y empujaría el texto. En Overlay se dibuja
+    // encima sin participar del layout.
+    let overlay = gtk4::Overlay::new();
+    overlay.set_child(Some(&hbox));
+    let bar = gtk4::Box::new(Orientation::Horizontal, 0);
+    bar.add_css_class("hold-bar");
+    bar.set_halign(gtk4::Align::Start);
+    bar.set_valign(gtk4::Align::End);
+    bar.set_visible(false);
+    overlay.add_overlay(&bar);
+
+    cell.set_child(Some(&overlay));
+    (cell, Some(bar))
 }
