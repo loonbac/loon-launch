@@ -248,3 +248,32 @@ fn parses_niri_logical_output_size() {
     assert_eq!(parse_logical_size(output), Some((1080, 1920)));
     assert_eq!(parse_logical_size("no output"), None);
 }
+
+#[test]
+fn palette_uses_the_system_accent_when_available() {
+    use crate::ui::palette::{normalize_accent, Palette};
+
+    // `accent-wallpaper` publica el acento del wallpaper como hex de seis digitos.
+    assert_eq!(normalize_accent("#217168\n"), Some("#217168".to_string()));
+    assert_eq!(normalize_accent("  #7aa2f7  "), Some("#7AA2F7".to_string()));
+
+    let palette = Palette::with_accent(Some("#217168".to_string()));
+    assert_eq!(palette.selected, "#217168");
+    assert!(palette
+        .css_defines()
+        .contains("@define-color selected #217168;"));
+}
+
+#[test]
+fn palette_keeps_its_default_accent_without_a_valid_token() {
+    use crate::ui::palette::{normalize_accent, Palette};
+
+    // Archivo ausente, truncado o basura: el launcher no puede quedarse sin color.
+    assert_eq!(normalize_accent(""), None);
+    assert_eq!(normalize_accent("#21716"), None);
+    assert_eq!(normalize_accent("#ZZZZZZ"), None);
+    assert_eq!(normalize_accent("teal"), None);
+
+    let palette = Palette::with_accent(None);
+    assert_eq!(palette.selected, Palette::default().selected);
+}
