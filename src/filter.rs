@@ -1,39 +1,60 @@
 // Lógica pura (testeable): filtrado de apps y movimiento de selección.
 use crate::models::Item;
 
-/// Filtra las apps según la query.
-/// - Si empieza por '>', filtra acciones de poder.
-/// - `#` muestra fondos animados; `#!` muestra fondos estáticos.
-/// - Si no, filtra apps por nombre.
-pub fn filter_items(all_apps: &[Item], power: &[Item], wallpapers: &[Item], query: &str) -> Vec<Item> {
+/// Qué lista se está mostrando. Es estado explícito de la UI, no algo que el
+/// usuario teclea: el selector de fondos se abre con la acción `>` («Cambiar
+/// fondo de pantalla») y `Tab` alterna entre animados y estáticos.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchMode {
+    /// Lista de aplicaciones (y acciones de poder con el prefijo `>`).
+    Apps,
+    /// Selector de fondos: `static_only` muestra imágenes en vez de videos.
+    Wallpapers { static_only: bool },
+}
+
+/// Filtra la lista según el modo y la query.
+/// - En `Apps`, el prefijo `>` filtra acciones de poder.
+/// - En `Wallpapers`, no hay prefijo: el texto filtra por nombre.
+/// - `#` no es un prefijo de modo: se trata como texto normal.
+pub fn filter_items(
+    all_apps: &[Item],
+    power: &[Item],
+    wallpapers: &[Item],
+    query: &str,
+    mode: SearchMode,
+) -> Vec<Item> {
     let q = query.to_lowercase();
     let mut shown: Vec<Item> = Vec::new();
 
-    if q.starts_with('>') {
-        let filter = q[1..].trim().to_string();
-        for p in power {
-            if filter.is_empty() || p.name.to_lowercase().contains(&filter) {
-                shown.push(p.clone());
+    match mode {
+        SearchMode::Wallpapers { static_only } => {
+            let filter = q.trim().to_string();
+            for w in wallpapers {
+                if w.is_header
+                    || !w.is_wallpaper
+                    || w.is_animated_wallpaper == static_only
+                {
+                    continue;
+                }
+                if filter.is_empty() || w.name.to_lowercase().contains(&filter) {
+                    shown.push(w.clone());
+                }
             }
         }
-    } else if q.starts_with('#') {
-        let static_only = q.starts_with("#!");
-        let filter = q[if static_only { 2 } else { 1 }..].trim().to_string();
-        for w in wallpapers {
-            if w.is_header
-                || !w.is_wallpaper
-                || w.is_animated_wallpaper == static_only
-            {
-                continue;
-            }
-            if filter.is_empty() || w.name.to_lowercase().contains(&filter) {
-                shown.push(w.clone());
-            }
-        }
-    } else {
-        for app in all_apps {
-            if app.name.to_lowercase().contains(&q) {
-                shown.push(app.clone());
+        SearchMode::Apps => {
+            if let Some(rest) = q.strip_prefix('>') {
+                let filter = rest.trim();
+                for p in power {
+                    if filter.is_empty() || p.name.to_lowercase().contains(filter) {
+                        shown.push(p.clone());
+                    }
+                }
+            } else {
+                for app in all_apps {
+                    if app.name.to_lowercase().contains(&q) {
+                        shown.push(app.clone());
+                    }
+                }
             }
         }
     }

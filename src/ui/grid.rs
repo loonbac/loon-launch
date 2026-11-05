@@ -8,7 +8,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::filter::{filter_items, normalize_selection};
+use crate::filter::{filter_items, normalize_selection, SearchMode};
 use crate::icons::resolve_icon;
 use crate::models::Item;
 use crate::ui::carousel::{build_carousel, CarouselRefs};
@@ -34,6 +34,13 @@ pub struct GridRefs {
 }
 
 impl GridRefs {
+    /// Cambia entre apps y selector de fondos. Es la única vía de entrada al
+    /// selector: no se deduce de la query tecleada.
+    pub fn set_wallpaper_mode(&self, on: bool, static_only: bool) {
+        *self.wallpaper_mode.borrow_mut() = on;
+        *self.wallpaper_static.borrow_mut() = on && static_only;
+    }
+
     /// Limpia el grid y lo vuelve a poblar con los items que matchean `query`.
     /// `animate` solo en present/cambio de modo: no en cada tecla.
     pub fn repopulate(
@@ -45,6 +52,16 @@ impl GridRefs {
         sel: &Rc<RefCell<i32>>,
         animate: bool,
     ) -> Vec<Item> {
+        // El modo es estado de la UI, nunca se deduce de lo tecleado: `#` es
+        // texto normal y no abre el selector de fondos.
+        let mode = if *self.wallpaper_mode.borrow() {
+            SearchMode::Wallpapers {
+                static_only: *self.wallpaper_static.borrow(),
+            }
+        } else {
+            SearchMode::Apps
+        };
+        let wallpaper_mode = mode != SearchMode::Apps;
         self.pause_media();
         self.media.borrow_mut().clear();
         self.cards.borrow_mut().clear();
@@ -59,11 +76,7 @@ impl GridRefs {
         while let Some(child) = self.grid.first_child() {
             self.grid.remove(&child);
         }
-        let shown = filter_items(all_apps, power, wallpapers, query);
-        let wallpaper_mode = query.starts_with('#');
-        let wallpaper_static = query.starts_with("#!");
-        *self.wallpaper_mode.borrow_mut() = wallpaper_mode;
-        *self.wallpaper_static.borrow_mut() = wallpaper_static;
+        let shown = filter_items(all_apps, power, wallpapers, query, mode);
         self.apply_chrome(wallpaper_mode);
 
         let selectable: Vec<usize> = shown
