@@ -41,3 +41,33 @@ no ocupe ni cree workspace en niri, sin cambiar nada más de la app.
   workspaces antes 4, después 4 en las tres.
 - Captura: `/tmp/run1.png` — la superficie flota sobre el wallpaper, con la UI
   completa y el acento teal del wallpaper.
+
+## Corrección de la revisión nativa (R3-001 / R4-001)
+
+Las lentes `reliability` y `resilience` reportaron como CRITICAL que
+`KeyboardMode::Exclusive` retiene el foco de teclado y anula el
+ocultar-al-perder-foco. El refuter los corroboró por inferencia, con
+`probe unavailable on pi`: nadie lo midió.
+
+**Medido en niri** (launch -> `niri msg action focus-window` a otra ventana):
+
+```
+antes:  focused = dev.loonbac.loonlaunch
+después: focused = chrome-...-Default
+superficies loon-launch mapeadas: 0
+```
+
+El compositor sí retira el foco y el launcher se desmapea: **falso positivo**.
+La consecuencia práctica de aplicar la corrección propuesta: con `OnDemand` la
+superficie no recibe el teclado al aparecer (el default del protocolo es `None`
+y `OnDemand` enfoca sólo tras un clic), así que la entrada de búsqueda deja de
+escribirse. Con `None`, lo mismo.
+
+Lo que sí faltaba, y es el hueco real que R3-001 señala, es que la prueba
+cubría sólo la función pura `use_overlay` y no la configuración que `apply`
+aplica. Ahora `overlay::CONFIG` declara capa, modo de teclado, zona exclusiva y
+namespace como dato, y `apply` la consume; la prueba la afirma y falla si el
+modo cambia a `OnDemand`.
+
+Evidencia: `cargo test` -> 27 pasan (RED observado al forzar `OnDemand` en
+`CONFIG`, GREEN restaurado).
