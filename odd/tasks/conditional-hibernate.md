@@ -29,8 +29,8 @@
 
 | ID | Spec | Ruta | Commit |
 | --- | --- | --- | --- |
-| T1 | S1, S3 | `src/power.rs`, `src/tests.rs` | `890cf84` |
-| T2 | S2, S4 | `src/apps.rs`, `src/filter.rs` | `890cf84` |
+| T1 | S1, S3 | `src/power.rs`, `src/tests.rs` | `c4bd917` |
+| T2 | S2, S4 | `src/apps.rs`, `src/filter.rs` | `c4bd917` |
 
 ## Log
 
