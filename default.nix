@@ -13,6 +13,13 @@ rustPlatform.buildRustPackage {
   };
 
   nativeBuildInputs = [ pkg-config wrapGAppsHook4 gobject-introspection ];
+  # Las cabeceras viajan con el paquete: el launcher las busca en
+  # `share/loon-launch/headers` a través de XDG_DATA_DIRS.
+  postInstall = ''
+    mkdir -p $out/share/loon-launch
+    cp -r assets/headers $out/share/loon-launch/headers
+  '';
+
   buildInputs = [
     gtk4
     glib
