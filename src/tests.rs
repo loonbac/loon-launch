@@ -279,6 +279,37 @@ fn palette_keeps_its_default_accent_without_a_valid_token() {
 }
 
 #[test]
+fn overlay_is_used_only_on_wayland_with_layer_shell_support() {
+    use crate::ui::overlay::{use_overlay, NAMESPACE};
+
+    // Solo con Wayland Y soporte del compositor; en el resto de casos la app
+    // tiene que seguir funcionando con una ventana normal.
+    assert!(use_overlay(true, true));
+    assert!(!use_overlay(true, false));
+    assert!(!use_overlay(false, true));
+    assert!(!use_overlay(false, false));
+
+    // El namespace es el identificador visible para el compositor.
+    assert_eq!(NAMESPACE, "loon-launch");
+    assert!(!NAMESPACE.contains(char::is_whitespace));
+}
+
+#[test]
+fn overlay_applies_exclusive_keyboard_on_the_overlay_layer() {
+    use gtk4_layer_shell::{KeyboardMode, Layer};
+    use crate::ui::overlay::{CONFIG, NAMESPACE};
+
+    // R3-001/R4-001: los hallazgos afirmaban que el teclado exclusivo impide
+    // ocultar al perder foco. Medido en niri: el compositor sí retira el foco y
+    // el launcher se desmapea. El exclusivo es necesario para escribir al
+    // abrir; la prueba fija la configuración que `apply` aplica de verdad.
+    assert_eq!(CONFIG.keyboard, KeyboardMode::Exclusive);
+    assert_eq!(CONFIG.layer, Layer::Overlay);
+    assert_eq!(CONFIG.exclusive_zone, 0);
+    assert_eq!(CONFIG.namespace, NAMESPACE);
+}
+
+#[test]
 fn headers_parse_skips_malformed_lines() {
     use crate::ui::headers::parse_index;
 
