@@ -6,15 +6,18 @@
 mod banner;
 mod carousel;
 mod grid;
+pub mod layout;
 mod keys;
-mod styles;
+pub mod palette;
+pub mod styles;
 
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
 use crate::apps::{load_apps, power_actions};
-use crate::models::{Item, WIN_H, WIN_W, WP_WIN_H, WP_WIN_W};
+use crate::models::Item;
+use crate::ui::layout::{WIN_H, WIN_W, WP_WIN_H, WP_WIN_W};
 use crate::ui::banner::{build_banner, BannerRefs};
 use crate::ui::grid::{build_grid, GridRefs};
 use crate::ui::keys::setup_key_controller;

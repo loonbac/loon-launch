@@ -4,7 +4,8 @@ use crate::filter::{
     apply_backspace, apply_char, filter_items, move_sel_grid, move_sel_rowwise, move_selection,
     move_selection_wrap, normalize_selection,
 };
-use crate::models::{Item, ROWS};
+use crate::models::Item;
+use crate::ui::layout::ROWS;
 use crate::ui::parse_logical_size;
 
 fn app(name: &str) -> Item {
@@ -164,6 +165,81 @@ fn app_discovery_includes_dynamic_flatpak_exports() {
             std::path::PathBuf::from(home).join(".local/share/flatpak/exports/share");
         assert!(dirs.contains(&user_exports));
     }
+}
+
+#[test]
+fn grid_places_items_column_major_in_five_rows() {
+    use crate::ui::layout::{cell_position, ROWS};
+
+    // style_1.rasi: columns: 3, lines: 5. La primera columna se llena primero.
+    assert_eq!(ROWS, 5);
+    assert_eq!(cell_position(0), (0, 0));
+    assert_eq!(cell_position(4), (0, 4));
+    assert_eq!(cell_position(5), (1, 0));
+    assert_eq!(cell_position(14), (2, 4));
+    assert_eq!(cell_position(15), (3, 0));
+}
+
+#[test]
+fn grid_fits_three_columns_within_the_window() {
+    use crate::ui::layout::{cell_width, COLS, LIST_PAD, LIST_SPACING, VISIBLE_W, WIN_W};
+
+    // style_1.rasi: width: 550px, listview spacing 3px, tres columnas.
+    assert_eq!(WIN_W, 550);
+    assert_eq!(COLS, 3);
+
+    // Las tres columnas entran completas en el ancho visible.
+    let columns_w = LIST_PAD + COLS as i32 * cell_width() + (COLS as i32 - 1) * LIST_SPACING;
+    assert!(columns_w <= VISIBLE_W, "las columnas ({columns_w}) no caben");
+
+    // El recorte cae exactamente donde empieza la columna siguiente: ninguna
+    // fracción de la cuarta columna asoma en el borde.
+    assert_eq!(
+        VISIBLE_W,
+        LIST_PAD + COLS as i32 * cell_width() + COLS as i32 * LIST_SPACING
+    );
+    assert!(VISIBLE_W < WIN_W, "falta el padding derecho de la lista");
+}
+
+#[test]
+fn layout_height_is_banner_plus_five_rows() {
+    use crate::ui::layout::{BANNER_H, ELEMENT_PAD, LIST_PAD, ROWS, ROW_H, WIN_H};
+
+    // El paso de fila es el contenido más el padding del elemento: es el alto
+    // que GTK termina asignando a cada celda.
+    let row_pitch = ROW_H + 2 * ELEMENT_PAD;
+    assert_eq!(row_pitch, 46);
+    assert_eq!(WIN_H, BANNER_H + ROWS as i32 * row_pitch + 2 * LIST_PAD);
+}
+
+#[test]
+fn palette_emits_every_color_token() {
+    use crate::ui::palette::{Palette, COLOR_TOKENS};
+
+    let defines = Palette::default().css_defines();
+    for token in COLOR_TOKENS {
+        assert!(
+            defines.contains(&format!("@define-color {token} ")),
+            "la paleta no define {token}:\n{defines}"
+        );
+    }
+}
+
+#[test]
+fn stylesheet_uses_tokens_and_no_literal_colors_in_rules() {
+    // S5: las reglas no llevan colores literales; sólo la paleta los declara.
+    let css = crate::ui::styles::stylesheet();
+    let rules: String = css
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("@define-color"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        !rules.contains("rgba(") && !rules.contains("#"),
+        "una regla de estilo lleva un color literal en vez de un token:\n{rules}"
+    );
+    assert!(rules.contains("@background") || rules.contains("@background-alt"));
 }
 
 #[test]
