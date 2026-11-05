@@ -20,7 +20,9 @@ cierra y `Backspace` borra. Los caracteres imprimibles filtran la lista aunque
 el campo de búsqueda no tenga el foco.
 
 El prefijo `>` entra en modo poder (apagar, reiniciar, suspender, cerrar sesión,
-cambiar fondo de pantalla...).
+cambiar fondo de pantalla...). El selector de fondos se abre **sólo** con esa
+acción; dentro de él, escribir filtra por nombre y `Tab` alterna fondos animados
+y estáticos.
 
 ## Arquitectura
 
@@ -33,7 +35,7 @@ app instalada aparece sin reiniciar nada.
 | --- | --- |
 | `src/main.rs` | Arranque, instancia única, ciclo de presentación |
 | `src/apps.rs` | Descubrimiento de `.desktop` |
-| `src/filter.rs` | Filtrado y modos de búsqueda (`>`, `#`) |
+| `src/filter.rs` | Filtrado y modos de búsqueda (`>`, fondos) |
 | `src/wallpapers.rs` | Listado de fondos y miniaturas |
 | `src/models.rs` | Modelo de ítem y acciones |
 | `src/ui/` | Ventana, banner, grid, carrusel y estilos |
@@ -64,3 +66,14 @@ inputs.loon-launch = {
 El paquete llega a los módulos por `specialArgs` y el binario se ejecuta como
 servicio de usuario `loon-launch.service`. Actualizar la versión del sistema es
 mover el input (`nix flake update loon-launch`), nunca editar un pin a mano.
+
+## Créditos y licencias de terceros
+
+Las imágenes de cabecera (`assets/headers/`, 201 archivos) provienen de
+[`DerpFest-AOSP/packages_apps_OmniStyle`](https://github.com/DerpFest-AOSP/packages_apps_OmniStyle/tree/15/res/drawable-nodpi),
+que **no incluye archivo de licencia**: el arte no está licenciado explícitamente
+por sus autores. Se usan aquí para uso personal, sin reclamar propiedad, y con
+política de retirada: si eres dueño del arte y no quieres que esté en este
+repositorio, abre un
+[issue](https://github.com/loonbac/loon-launch/issues) y se borra. Detalles y
+modificaciones locales en [`THIRD-PARTY.md`](THIRD-PARTY.md).
