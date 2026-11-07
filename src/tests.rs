@@ -1,5 +1,6 @@
 // Tests de la lógica pura del launcher (filtrado, navegación, edición).
 use crate::apps::{data_dirs, power_actions};
+use crate::wallpapers::{cache_dir_for, images_dir_for, videos_dir_for};
 use crate::filter::{
     apply_backspace, apply_char, filter_items, move_sel_grid, move_sel_rowwise, move_selection,
     move_selection_wrap, normalize_selection, hold_is_armed, hold_progress, requires_hold,
@@ -588,4 +589,31 @@ fn zram_is_rejected_by_name_because_its_type_looks_like_a_disk() {
     // puede hibernar: Peor que ocultarlo.
     let real_pc_line = "/dev/zram0 partition 16393724 7578244 100";
     assert!(!has_adequate_swap(1_000, real_pc_line));
+}
+
+#[test]
+fn wallpaper_dirs_resolve_under_any_home_not_loonbac() {
+    // Regresión: estaban quemados a /home/loonbac y en otra máquina el
+    // selector abría vacío aunque hubiera videos en ~/Videos/Wallpapers.
+    use std::path::Path;
+    let friend = Path::new("/home/amigo");
+    assert_eq!(
+        videos_dir_for(friend),
+        Path::new("/home/amigo/Videos/Wallpapers")
+    );
+    assert_eq!(
+        images_dir_for(friend),
+        Path::new("/home/amigo/Pictures/Wallpaper")
+    );
+    assert_eq!(
+        cache_dir_for(friend),
+        Path::new("/home/amigo/.cache/loon-launch/thumbs")
+    );
+    for p in [
+        videos_dir_for(friend),
+        images_dir_for(friend),
+        cache_dir_for(friend),
+    ] {
+        assert!(!p.to_string_lossy().contains("loonbac"));
+    }
 }
