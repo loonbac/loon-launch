@@ -4,29 +4,60 @@
 //   - "Background": imágenes (niri-backdrop, capa detrás de todo)
 // Los videos se representan con un frame extraído con ffmpeg (cacheado en
 // ~/.cache/loon-launch) para la miniatura de respaldo si el preview en vivo falla.
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::models::Item;
 
-const VIDEOS_DIR: &str = "/home/loonbac/Videos/Wallpapers";
-const IMAGES_DIR: &str = "/home/loonbac/Pictures/Wallpaper";
-const CACHE_DIR: &str = "/home/loonbac/.cache/loon-launch/thumbs";
+fn home_dir() -> PathBuf {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+fn videos_dir() -> PathBuf {
+    videos_dir_for(&home_dir())
+}
+
+fn images_dir() -> PathBuf {
+    images_dir_for(&home_dir())
+}
+
+fn cache_dir() -> PathBuf {
+    env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".cache"))
+        .join("loon-launch/thumbs")
+}
+
+/// Variantes puras para tests: resuelven bajo el `home` dado.
+pub(crate) fn videos_dir_for(home: &Path) -> PathBuf {
+    home.join("Videos/Wallpapers")
+}
+
+pub(crate) fn images_dir_for(home: &Path) -> PathBuf {
+    home.join("Pictures/Wallpaper")
+}
+
+pub(crate) fn cache_dir_for(home: &Path) -> PathBuf {
+    home.join(".cache/loon-launch/thumbs")
+}
 
 pub fn wallpapers() -> Vec<Item> {
     let mut items = Vec::new();
     // Sección 1: Fondo de pantalla (videos animados).
     items.push(Item::header("Fondo de pantalla"));
-    collect_dir(VIDEOS_DIR, true, &mut items);
+    collect_dir(&videos_dir(), true, &mut items);
     // Sección 2: Background (imágenes estáticas del backdrop).
     items.push(Item::header("Background"));
-    collect_dir(IMAGES_DIR, false, &mut items);
+    collect_dir(&images_dir(), false, &mut items);
     items
 }
 
-fn collect_dir(dir: &str, is_video: bool, out: &mut Vec<Item>) {
-    if !Path::new(dir).is_dir() {
+fn collect_dir(dir: &Path, is_video: bool, out: &mut Vec<Item>) {
+    if !dir.is_dir() {
         return;
     }
     if let Ok(entries) = fs::read_dir(dir) {
@@ -73,8 +104,9 @@ fn video_thumb(video: &Path) -> String {
     let Some(stem) = video.file_stem().and_then(|s| s.to_str()) else {
         return String::new();
     };
-    fs::create_dir_all(CACHE_DIR).ok();
-    let thumb = format!("{CACHE_DIR}/{stem}.jpg");
+    fs::create_dir_all(cache_dir()).ok();
+    let thumb = cache_dir().join(format!("{stem}.jpg"));
+    let thumb = thumb.to_string_lossy().into_owned();
     if !Path::new(&thumb).is_file() {
         let _ = Command::new("ffmpeg")
             .args([
