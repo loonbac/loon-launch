@@ -1,0 +1,52 @@
+name: cache
+
+# Publica el paquete en la caché `loon-flakes` para que nadie compile a mano:
+# la máquina del dueño, la del amigo y cualquier usuario con el substituter
+# configurado descargan el binario. En PRs (incluidos forks, sin secreto)
+# solo se construye: el portón es que el build pase, no publicar.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # v31
+      - uses: cachix/install-nix-action@d9186cbdca7adedf113a159fa91f725a27866771
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Construir
+        run: nix build .#loon-launch --print-build-logs
+
+      # v15
+      - uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: loon-flakes
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Publicar en Cachix
+        if: github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+          nix build --print-out-paths .#loon-launch > /tmp/paths
+          xargs -r cachix push loon-flakes < /tmp/paths

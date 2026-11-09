@@ -21,5 +21,10 @@
       devShells.${system}.default = pkgs.mkShell {
         inputsFrom = [ loon-launch ];
       };
+
+      # Instalación por nombre en NixOS, sin overlay ni specialArgs:
+      # `imports = [ inputs.loon-launch.nixosModules.default ];`
+      # `programs.loon-launch.enable = true;`
+      nixosModules.default = import ./nix/module.nix;
     };
 }
