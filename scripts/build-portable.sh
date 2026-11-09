@@ -31,11 +31,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/version.sh"
 
 VERSION="$LOON_LAUNCH_VERSION"
 BIN="loon-launch"
-# Debian 12 trae glibc 2.36, que es el suelo razonable: Ubuntu 22.04, Fedora 36
-# y RHEL/Rocky 9.3 arrancan con el mismo binario.
+# Ubuntu 24.04 trae glibc 2.39, el suelo más bajo que compila este proyecto:
+# Debian 12 no sirve porque trae GTK 4.8 y el crate gtk4 exige >= 4.14 (noble
+# trae 4.14). Con este suelo arranca en Ubuntu 24.04+, Debian 13+, Fedora 40+
+# y Arch; Ubuntu 22.04 y Debian 12 quedan fuera, y se documenta en INSTALL.txt.
 # Nombre completamente cualificado: los nombres cortos no se resuelven en un
 # entorno limpio (podman exige el registro explícito).
-IMAGE="docker.io/library/debian:12-slim"
+IMAGE="docker.io/library/ubuntu:24.04"
 # La misma versión que empaqueta Debian trixie (1.0.4-2): paridad con la
 # distro que sí la trae y un tag inmutable en vez de una rama móvil.
 LAYER_SHELL_TAG="v1.0.4"
@@ -89,7 +91,8 @@ apt-get install -y -qq --no-install-recommends \
 curl -fsSL --proto '=https' --tlsv1.2 https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# gtk4-layer-shell no existe en Debian 12: se compila el tag fijado arriba.
+# gtk4-layer-shell no viene empaquetada (ni en Debian 12 ni en Ubuntu 24.04):
+# se compila el tag fijado arriba.
 # `--depth 1 --branch` trae solo ese tag, no todo el historial.
 rm -rf /tmp/gtk4-layer-shell
 git clone --depth 1 --branch "$LAYER_TAG" https://github.com/wmww/gtk4-layer-shell /tmp/gtk4-layer-shell
