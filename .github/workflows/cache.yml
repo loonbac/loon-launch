@@ -6,9 +6,9 @@ name: cache
 # solo se construye: el portón es que el build pase, no publicar.
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -39,13 +39,13 @@ jobs:
 
       # v15
       - uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         with:
           name: loon-flakes
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Publicar en Cachix
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           nix build --print-out-paths .#loon-launch > /tmp/paths
