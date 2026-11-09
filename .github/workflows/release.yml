@@ -1,0 +1,190 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Release de loon-launch: instalable sin Nix en cualquier distro de Linux.
+#
+# Publica los tres artefactos de odd/tasks/distribucion-multidistro.md (T5):
+#  - tarball portable, para Arch o instalación manual (S3)
+#  - .deb, para Debian y Ubuntu (S4)
+#  - .rpm, para Fedora (S4)
+#
+# Hardening, igual que el resto de workflows del repo:
+#  - acciones fijadas a SHA completo, nunca una etiqueta móvil
+#  - solo acciones de GitHub, sin terceros
+#  - permisos mínimos: contents: read, y solo el job final escribe
+#  - no corre en pull_request, así que jamás ejecuta código no confiable
+#
+# La publicación usa el `gh` CLI que ya viene en el runner en vez de una acción
+# de terceros: cada dependencia externa es superficie de ataque.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: release
+
+on:
+  # Un tag vX.Y.Z es la decisión de publicar. El disparo manual sirve para
+  # rehacer los artefactos sin mover un tag ya publicado.
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # El binario se compila en Docker contra Debian 12 (glibc 2.36, el suelo que
+  # cubre Debian 12+, Ubuntu 22.04+, Fedora 36+ y Arch) y de ahí salen los tres
+  # paquetes. Docker viene preinstalado en los runners de Ubuntu, así que el
+  # resultado no depende del toolchain de nadie.
+  build:
+    name: compilar y empaquetar
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      # v4
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # Deja target/portable/bin/loon-launch y la layer-shell vendida. Aborta si
+      # el binario conserva dependencias sin resolver.
+      - name: Compilar binario portable
+        run: ./scripts/build-portable.sh
+
+      # Los tres paquetes se arman desde ese mismo binario ya construido: los
+      # scripts de empaquetado no recompilan, así que release y paquete no
+      # pueden divergir.
+      - name: Paquete tarball portable
+        run: ./scripts/package.sh tarball
+
+      - name: Paquete Debian (.deb)
+        run: ./scripts/package.sh deb
+
+      - name: Paquete Fedora (.rpm)
+        run: ./scripts/package.sh rpm
+
+      # v6
+      - name: Subir artefactos
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: release-packages
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+
+  # Portón de la release: cada artefacto se instala de verdad en un contenedor
+  # limpio (tarball en Debian, .deb con apt, .rpm con dnf), se comprueba que
+  # `ldd` no deje nada sin resolver y el wrapper debe sobrevivir 5 s bajo Xvfb.
+  # Un paquete que instala pero no arranca no llega a publicarse.
+  test:
+    name: probar la instalación
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      # v4
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      # test-install.sh lee los paquetes de dist/, así que los artefactos del
+      # job anterior se bajan a esa misma ruta.
+      # v6
+      - name: Recolectar artefactos
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: release-packages
+          path: dist
+
+      - name: Probar instalación en contenedores limpios
+        run: ./scripts/test-install.sh
+
+  publish:
+    name: publicar release
+    runs-on: ubuntu-latest
+    needs: [test]
+    # Solo un tag v* publica; el disparo manual se queda en verificación.
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 20
+    # Único job con permiso de escritura.
+    permissions:
+      contents: write
+
+    steps:
+      # Publicar no necesita el código, solo los paquetes: sin checkout no hay
+      # credenciales del repositorio en el disco.
+      # v6
+      - name: Recolectar artefactos
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: release-packages
+          path: dist
+
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Selección explícita por extensión, nunca un find genérico sobre
+          # dist/: el job de build solo subió esos tres patrones, así que no
+          # puede colarse un artefacto intermedio del empaquetado.
+          FILES=""
+          for pattern in 'dist/*.tar.gz' 'dist/*.deb' 'dist/*.rpm'; do
+            found=0
+            for f in $pattern; do
+              [ -f "$f" ] || continue
+              FILES="$FILES $f"
+              found=1
+            done
+            if [ "$found" -eq 0 ]; then
+              echo "::error::falta el artefacto $pattern"
+              exit 1
+            fi
+          done
+          FILES="${FILES# }"
+          echo "Publicando: $FILES"
+          gh release create "${GITHUB_REF_NAME}" $FILES \
+            --title "loon-launch ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --notes "$(cat <<'NOTES'
+          ## Instalación
+
+          **Debian / Ubuntu**
+          ```bash
+          sudo apt install ./loon-launch-<version>.deb
+          ```
+
+          **Fedora**
+          ```bash
+          sudo dnf install ./loon-launch-<version>.rpm
+          ```
+
+          **Arch y otras distribuciones (tarball portable)**
+          ```bash
+          # opcional: ffmpeg, para las miniaturas de vídeo
+          sudo pacman -S gtk4 libadwaita
+          tar -xzf loon-launch-<version>-x86_64-linux.tar.gz
+          ```
+          Dentro del tarball, `INSTALL.txt` explica las dependencias de cada
+          distro y cómo dejarlo instalado.
+
+          **Nix (cualquier distro, sin descargar nada a mano)**
+          ```bash
+          nix profile install github:loonbac/loon-launch
+          loon-launch
+          ```
+          En NixOS basta con el módulo: `programs.loon-launch.enable = true`.
+          NOTES
+          )"
