@@ -197,7 +197,7 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
             // el signal changed, que re-puebla el grid y hace borrow_mut de
             // current_items; si el borrow inmutable siguiera activo aquí,
             // paniquea (BorrowMutError) y la app crashea.
-            let action: Option<String> = {
+            let (action, wallpaper_animated): (Option<String>, Option<bool>) = {
                 let items = current_items.borrow();
                 let idx = *sel_idx.borrow();
                 // El índice seleccionable NO incluye headers: mapear al item real.
@@ -207,7 +207,13 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
                     .filter(|(_, it)| !it.is_header)
                     .nth(idx.max(0) as usize)
                     .map(|(i, _)| i);
-                real.and_then(|i| items.get(i)).map(|it| it.exec.clone())
+                match real.and_then(|i| items.get(i)) {
+                    Some(it) => (
+                        Some(it.exec.clone()),
+                        it.is_wallpaper.then_some(it.is_animated_wallpaper),
+                    ),
+                    None => (None, None),
+                }
             };
 
             match action.as_deref() {
@@ -220,6 +226,14 @@ pub fn build_ui(app: &gtk4::Application, wallpaper_mode: bool) {
                 }
                 // Ejecutar la app seleccionada y ocultar el launcher.
                 Some(exec) => {
+                    // Regla del accent: los estáticos no lo mueven, solo los
+                    // animados. El fijado va ANTES de ejecutar: el demonio
+                    // aún no reescribió el archivo y el vigente es el anterior.
+                    match wallpaper_animated {
+                        Some(false) => crate::ui::palette::pin_accent(),
+                        Some(true) => crate::ui::palette::unpin_accent(),
+                        None => {}
+                    }
                     let exec = exec.to_string();
                     std::thread::spawn(move || {
                         // Cada app vive en un scope independiente: reiniciar el

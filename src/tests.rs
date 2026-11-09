@@ -386,6 +386,27 @@ fn palette_uses_the_system_accent_when_available() {
 }
 
 #[test]
+fn pinned_accent_wins_over_the_file() {
+    use crate::ui::palette::resolve_accent;
+
+    // Regla del dueño: al aplicar un estático se fija el vigente y el
+    // archivo se ignora; al aplicar un animado se libera y manda el archivo.
+    assert_eq!(
+        resolve_accent(Some(Some("#111111".to_string())), Some("#222222".to_string())),
+        Some("#111111".to_string())
+    );
+    assert_eq!(
+        resolve_accent(Some(None), Some("#222222".to_string())),
+        None
+    );
+    assert_eq!(
+        resolve_accent(None, Some("#222222".to_string())),
+        Some("#222222".to_string())
+    );
+    assert_eq!(resolve_accent(None, None), None);
+}
+
+#[test]
 fn palette_keeps_its_default_accent_without_a_valid_token() {
     use crate::ui::palette::{normalize_accent, Palette};
 

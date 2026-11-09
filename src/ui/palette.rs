@@ -15,6 +15,14 @@ use std::path::{Path, PathBuf};
 /// Archivo donde `accent-wallpaper` publica el acento del wallpaper activo.
 pub const ACCENT_FILE: &str = ".config/mpvpaper/accent.txt";
 
+/// Acento fijado por el launcher al aplicar un fondo estático: la capa
+/// externa (`None`) dice si hay fijado; la interna, el valor fijado.
+/// Regla del dueño: solo los animados mueven el acento. Como el demonio
+/// reescribe el archivo con cualquier fondo, el launcher fija el vigente
+/// al aplicar un estático e ignora el archivo hasta que un animado lo
+/// libere. Lo que se cambia fuera del launcher con un fijo activo queda
+/// fuera de esta regla (limitación conocida).
+
 /// Nombres de los tokens de color expuestos a la hoja de estilos.
 pub const COLOR_TOKENS: [&str; 6] = [
     "background",
@@ -66,9 +74,9 @@ impl Palette {
         palette
     }
 
-    /// Paleta del launcher en ejecución: acento del wallpaper si está disponible.
+    /// Paleta del launcher en ejecución: acento efectivo (fijado o sistema).
     pub fn current() -> Self {
-        Self::with_accent(system_accent())
+        Self::with_accent(effective_accent())
     }
 
     /// Bloque `@define-color` que consumen las reglas de estilo.
@@ -123,4 +131,34 @@ pub fn accent_from_file(path: &Path) -> Option<String> {
 pub fn system_accent() -> Option<String> {
     let home = std::env::var_os("HOME")?;
     accent_from_file(&PathBuf::from(home).join(ACCENT_FILE))
+}
+
+/// Núcleo puro: el fijado manda; sin fijar, manda el archivo.
+pub(crate) fn resolve_accent(
+    pinned: Option<Option<String>>,
+    file: Option<String>,
+) -> Option<String> {
+    pinned.unwrap_or(file)
+}
+
+static PINNED_ACCENT: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::new(None);
+
+/// Fija el acento vigente en este instante. Llamar ANTES de aplicar el
+/// fondo estático: el demonio aún no reescribió el archivo y el vigente
+/// es el anterior (del último animado o el defecto).
+pub fn pin_accent() {
+    let current = effective_accent();
+    *PINNED_ACCENT.lock().unwrap() = Some(current);
+}
+
+/// Libera el fijado: el acento vuelve a seguir al archivo. Al aplicar un
+/// fondo animado desde el launcher.
+pub fn unpin_accent() {
+    *PINNED_ACCENT.lock().unwrap() = None;
+}
+
+/// Acento efectivo: el fijado si lo hay; si no, el publicado por el sistema.
+pub fn effective_accent() -> Option<String> {
+    let pinned = PINNED_ACCENT.lock().unwrap().clone();
+    resolve_accent(pinned, system_accent())
 }
