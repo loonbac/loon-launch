@@ -100,6 +100,9 @@ Dependencias del sistema (la layer-shell ya viene vendida dentro):
 - Arch: sudo pacman -S gtk4 libadwaita
   (opcional: ffmpeg)
 
+Tus fondos van en ~/.loon-launch/wallpapers/ (se crea solo, con las imágenes
+que trae la app; suelta ahí las tuyas, imágenes o videos).
+
 Atajos sugeridos en niri: Super+Space y Super+B apuntando a loon-launch.
 INSTALL
     tar -C "$DIST/tarball-root" -czf "$DIST/$PKG_NAME-$VERSION-x86_64-linux.tar.gz" "loon-launch-$VERSION"

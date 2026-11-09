@@ -37,6 +37,12 @@ jobs:
       - name: Construir
         run: nix build .#loon-launch --print-build-logs
 
+      # Los tests corren con el toolchain y las librerías del devShell, sin
+      # tocar el sistema: es la misma red (crates.io) y el mismo lock que el
+      # build de arriba.
+      - name: Tests
+        run: nix develop --command cargo test --locked
+
       # v15
       - uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc
         if: github.ref == 'refs/heads/main'

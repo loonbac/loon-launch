@@ -1,6 +1,9 @@
 // Tests de la lógica pura del launcher (filtrado, navegación, edición).
 use crate::apps::{data_dirs, power_actions};
-use crate::wallpapers::{cache_dir_for, images_dir_for, videos_dir_for};
+use crate::wallpapers::{
+    cache_dir_for, custom_dir_for, images_dir_for, is_video_ext, is_wallpaper_ext, seed_missing,
+    videos_dir_for,
+};
 use crate::filter::{
     apply_backspace, apply_char, filter_items, move_sel_grid, move_sel_rowwise, move_selection,
     move_selection_wrap, normalize_selection, hold_is_armed, hold_progress, requires_hold,
@@ -616,4 +619,58 @@ fn wallpaper_dirs_resolve_under_any_home_not_loonbac() {
     ] {
         assert!(!p.to_string_lossy().contains("loonbac"));
     }
+}
+
+#[test]
+fn custom_wallpaper_dir_is_a_dotdir_under_home() {
+    // El lugar propio no es un sitio común: vive en un dotdir y bajo el
+    // HOME que sea, nunca quemado a un usuario.
+    use std::path::Path;
+    let friend = Path::new("/home/amigo");
+    assert_eq!(
+        custom_dir_for(friend),
+        Path::new("/home/amigo/.loon-launch/wallpapers")
+    );
+}
+
+#[test]
+fn wallpaper_ext_routing() {
+    // Lo que el selector acepta y cómo se clasifica (en minúsculas).
+    for ext in ["png", "jpg", "jpeg", "webp", "gif"] {
+        assert!(is_wallpaper_ext(ext), "{ext} debe aceptarse");
+    }
+    for ext in ["mp4", "webm", "mkv", "mov", "gif"] {
+        assert!(is_video_ext(ext), "{ext} debe ir a mpvpaper");
+    }
+    for ext in ["png", "jpg", "jpeg", "webp"] {
+        assert!(!is_video_ext(ext), "{ext} debe ir al backdrop");
+    }
+    for ext in ["txt", "exe", "", "desktop"] {
+        assert!(!is_wallpaper_ext(ext), "{ext} no es fondo");
+        assert!(!is_video_ext(ext), "{ext} no es video");
+    }
+}
+
+#[test]
+fn seed_copies_only_missing_by_name() {
+    // Sembrar no pisa lo del usuario: lo que ya existe por nombre se respeta.
+    let base = std::env::temp_dir().join(format!("loon-launch-test-seed-{}", std::process::id()));
+    let src = base.join("src");
+    let dir = base.join("dir");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(src.join("nuevo.jpg"), "nuevo").unwrap();
+    std::fs::write(src.join("mio.png"), "paquete").unwrap();
+    std::fs::write(dir.join("mio.png"), "usuario").unwrap();
+    assert_eq!(seed_missing(&dir, &src), 1);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("mio.png")).unwrap(),
+        "usuario"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("nuevo.jpg")).unwrap(),
+        "nuevo"
+    );
+    assert_eq!(seed_missing(&dir, &src), 0);
+    std::fs::remove_dir_all(&base).ok();
 }
