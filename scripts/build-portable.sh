@@ -83,7 +83,7 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   ca-certificates curl git pkg-config gcc \
   meson ninja-build \
-  valac \
+  valac gobject-introspection libgirepository1.0-dev \
   libgtk-4-dev libadwaita-1-dev libglib2.0-dev \
   libwayland-dev wayland-protocols
 
