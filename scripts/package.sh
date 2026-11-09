@@ -67,8 +67,15 @@ stage_tree() {
   [ -e "$root/$prefix/lib/$PKG_NAME/libgtk4-layer-shell.so.0" ] || die "no se vendió la librería"
   cat > "$root/$prefix/bin/$BIN" <<WRAPPER
 #!/bin/sh
-# Dir privado con la layer-shell vendida (no existe en Debian 12/Ubuntu 22.04).
-exec env LD_LIBRARY_PATH="$prefix/lib/$PKG_NAME:\$LD_LIBRARY_PATH" "$prefix/lib/$PKG_NAME/$BIN.real" "\$@"
+# Wrapper auto-resuelto: vale instalado en PATH (/usr/bin) y suelto en el
+# tarball. Rutas relativas no sirven: el cwd de quien lo invoca es arbitrario.
+case "\$0" in
+  */*) BIN_DIR="\$(cd "\$(dirname "\$0")" && pwd)" ;;
+  *) BIN_DIR="\$(cd "\$(dirname "\$(command -v "\$0")")" && pwd)" ;;
+esac
+LIB_DIR="\$(cd "\$BIN_DIR/../lib/$PKG_NAME" && pwd)"
+# Dir privado con la layer-shell vendida (no la empaquetan ni Debian ni Ubuntu).
+exec env LD_LIBRARY_PATH="\$LIB_DIR\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}" "\$LIB_DIR/$BIN.real" "\$@"
 WRAPPER
   chmod 755 "$root/$prefix/bin/$BIN"
   cp -r assets/headers "$root/$prefix/share/$PKG_NAME/headers"
