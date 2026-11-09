@@ -40,16 +40,18 @@ case "$(readelf -l "$BINARY" 2>/dev/null | sed -n 's/.*interpreter: \(.*\)\]/\1/
   /nix/store/*) die "el binario viene de Nix: no sirve para paquetes nativos; compila con scripts/build-portable.sh" ;;
 esac
 
-LIB=""
+# La familia completa debe existir y el .so.0 resolverse (test -f sigue
+# enlaces): un enlace colgando aquí significa que el build no vendió el
+# fichero versionado real.
+compgen -G "target/portable/lib/libgtk4-layer-shell.so.0*" > /dev/null || die "falta target/portable/lib/libgtk4-layer-shell.so.0*; construye con scripts/build-portable.sh"
 for f in target/portable/lib/libgtk4-layer-shell.so.0*; do
-  [ -f "$f" ] && LIB="$f" && break
+  [ -f "$f" ] || die "enlace colgando en target/portable/lib: $f (falta el fichero versionado)"
 done
-[ -n "$LIB" ] || die "falta target/portable/lib/libgtk4-layer-shell.so.0*; construye con scripts/build-portable.sh"
 
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 have_podman() { command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; }
 
-echo "==> Empaquetando $PKG desde $BINARY + $LIB"
+echo "==> Empaquetando $PKG desde $BINARY + $(compgen -G "target/portable/lib/libgtk4-layer-shell.so*" | tr '\n' ' ')"
 mkdir -p "$DIST"
 
 # Raíz común del paquete: el wrapper en bin/, lo real en libexec privada.
@@ -59,8 +61,10 @@ stage_tree() {
   rm -rf "$root"
   mkdir -p "$root/$prefix/bin" "$root/$prefix/lib/$PKG_NAME" "$root/$prefix/share/applications" "$root/$prefix/share/$PKG_NAME"
   install -Dm755 "$BINARY" "$root/$prefix/lib/$PKG_NAME/$BIN.real"
-  install -Dm644 "$LIB" "$root/$prefix/lib/$PKG_NAME/$(basename "$LIB")"
-  [ -e "$root/$prefix/lib/$PKG_NAME/$(basename "$LIB")" ] || die "no se vendió la librería"
+  # La familia entera (.so, .so.0, versionado real): el cargador pide el
+  # SONAME y el enlace debe resolverse dentro del directorio privado.
+  cp -a target/portable/lib/libgtk4-layer-shell.so* "$root/$prefix/lib/$PKG_NAME/"
+  [ -e "$root/$prefix/lib/$PKG_NAME/libgtk4-layer-shell.so.0" ] || die "no se vendió la librería"
   cat > "$root/$prefix/bin/$BIN" <<WRAPPER
 #!/bin/sh
 # Dir privado con la layer-shell vendida (no existe en Debian 12/Ubuntu 22.04).
