@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use crate::filter::{
     apply_backspace, apply_char, hold_is_armed, hold_progress, move_sel_grid, move_selection_wrap,
 };
+use crate::models::Item;
 use crate::ui::grid::GridRefs;
 
 #[derive(Clone)]
@@ -17,6 +18,12 @@ pub struct KeyState {
     pub grid_refs: GridRefs,
     pub entry: gtk4::Entry,
     pub sel_idx: Rc<RefCell<i32>>,
+    /// Listas para repoblar sin pasar por el signal `changed` del Entry
+    /// (issue #23: `set_text("")` es no-op con el Entry ya vacío).
+    pub all_apps: Rc<RefCell<Vec<Item>>>,
+    pub power: Rc<RefCell<Vec<Item>>>,
+    pub wallpapers: Rc<RefCell<Vec<Item>>>,
+    pub current_items: Rc<RefCell<Vec<Item>>>,
     pub hide: Rc<dyn Fn()>,
     pub run_selected: Rc<dyn Fn()>,
     /// Si la acción seleccionada exige mantener Enter (acción de poder).
@@ -114,6 +121,21 @@ pub fn setup_key_controller(window: &gtk4::ApplicationWindow, state: KeyState) {
                     let show_static = !*state.grid_refs.wallpaper_static.borrow();
                     state.grid_refs.set_wallpaper_mode(true, show_static);
                     *state.sel_idx.borrow_mut() = 0;
+                    // Repoblado explícito: `set_text("")` no emite `changed`
+                    // cuando el Entry ya está vacío (el caso normal: abrir
+                    // Super+B y pulsar Tab sin teclear), y sin repoblado la
+                    // lista visible no cambia aunque el flag sí (issue #23).
+                    let apps = state.all_apps.borrow();
+                    let power = state.power.borrow();
+                    let wallpapers = state.wallpapers.borrow();
+                    *state.current_items.borrow_mut() = state.grid_refs.repopulate(
+                        &apps,
+                        &power,
+                        &wallpapers,
+                        "",
+                        &state.sel_idx,
+                        true,
+                    );
                     state.entry.set_text("");
                     state.grid_refs.scrolled.grab_focus();
                     glib::Propagation::Stop
