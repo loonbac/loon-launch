@@ -69,7 +69,8 @@ echo "==> Compilando dentro de $IMAGE con $ENGINE"
   -w /src \
   "$IMAGE" \
   sh -s "$LAYER_SHELL_TAG" <<'DOCKER'
-set -euo pipefail
+# `sh` aquí es dash: sin pipefail (igual que PORT).
+set -eu
 LAYER_TAG="$1"
 
 export DEBIAN_FRONTEND=noninteractive

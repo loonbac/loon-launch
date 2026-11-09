@@ -68,7 +68,8 @@ run_in() {
     -w /src \
     "$image" \
     sh -s "$artifact" <<DOCKER
-set -euo pipefail
+# `sh` aquí es dash: sin pipefail (igual que PORT).
+set -eu
 ART="\$1"
 $setup
 su -s /bin/sh nobody -c true 2>/dev/null || true
@@ -86,7 +87,8 @@ test_tarball() {
     -w /tmp \
     docker.io/library/debian:12-slim \
     sh -s <<DOCKER
-set -euo pipefail
+# `sh` aquí es dash: sin pipefail (igual que PORT).
+set -eu
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends xvfb libgtk-4-1 libadwaita-1-0
