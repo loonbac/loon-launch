@@ -123,9 +123,12 @@ jobs:
       contents: write
 
     steps:
-      # Publicar no necesita el código, solo los paquetes: sin checkout no hay
-      # credenciales del repositorio en el disco.
+      # `gh release create` invoca git internamente: sin checkout no hay
+      # repositorio y falla (`failed to run git`). El código no se usa más.
       # v6
+      - name: Contexto del repo para gh
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
       - name: Recolectar artefactos
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
         with:
