@@ -33,6 +33,9 @@ cd "$ROOT"
 CHECK_SNIPPET='
 set -eu
 PREFIX="$1"
+# El ldd debe ver lo mismo que verá el wrapper en ejecución: la layer-shell
+# vendida en el directorio privado, no la del sistema.
+export LD_LIBRARY_PATH="$PREFIX/lib/loon-launch${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 REAL="$PREFIX/lib/loon-launch/loon-launch.real"
 [ -x "$PREFIX/bin/loon-launch" ] || { echo "error: falta el wrapper en $PREFIX/bin"; exit 1; }
 [ -x "$REAL" ] || { echo "error: falta el binario real en $REAL"; exit 1; }

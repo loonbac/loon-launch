@@ -108,9 +108,12 @@ install -Dm755 "target/release/loon-launch" "/src/target/portable/bin/loon-launc
 
 # Se vende la librería compilada arriba: es lo que empaqueta package.sh en
 # el directorio privado. Se resuelve por SONAME real, no por nombre supuesto.
-LIB="$(ldconfig -p | grep 'libgtk4-layer-shell.so.0 ' | head -1 | tr -d ' ' | cut -d'>' -f2 || true)"
-[ -n "$LIB" ] || { echo "error: no quedó instalada libgtk4-layer-shell.so.0" >&2; exit 1; }
-cp -a "$LIB"* /src/target/portable/lib/ 2>/dev/null || cp -a "$LIB" /src/target/portable/lib/
+# Se copia la familia completa (.so, .so.0 y el fichero versionado real): el
+# .so.0 es un enlace al versionado y copiar solo el enlace lo deja colgando
+# (el test -f de package.sh lo rechaza con razón).
+LIBDIR="$(ldconfig -p | grep 'libgtk4-layer-shell.so.0 ' | head -1 | tr -d ' ' | cut -d'>' -f2 | xargs dirname || true)"
+[ -n "$LIBDIR" ] && [ -d "$LIBDIR" ] || { echo "error: no quedó instalada libgtk4-layer-shell.so.0" >&2; exit 1; }
+cp -a "$LIBDIR"/libgtk4-layer-shell.so* /src/target/portable/lib/
 
 # Guardarraíl: ningún 'not found' puede llegar a la release.
 if ldd /src/target/portable/bin/loon-launch | grep -q 'not found'; then
