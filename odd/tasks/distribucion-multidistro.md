@@ -23,3 +23,5 @@
 - L1 (verbatim dueño): `ademas, apunta esto en mi agents que supongo sera importante, sabras que quiero que mi app launcher este disponible para cualquier persona, entonces lo ideal seria que para los que usan nixos puedan ponerlo ahi el nombre y que se instale sin tantos pasos extras, si alguien de arch quiere instalarlo se descarga el binario y lo instala, no necesita tener nix, y lo mismo para las otras distros, eso quiero, para todas las distros de linux que este, entonces haslo asi y arreglalo todo`
 - L2: secreto `CACHIX_AUTH_TOKEN` ya configurado en el repo (2026-11-09) sin mostrar el valor.
 - L3: issue #18 y PR #19 los abrió SaiToEJ (no el dueño); el PR dice `Closes #18`.
+- L4: rama `feat/distribucion-multidistro` en 5 commits (T3 cachix, T4 módulo NixOS, T5 scripts+workflow+README); slice ~833 líneas: se entrega vía PR #20 antes del próximo commit.
+- L5 (2026-11-09): PR #20 abierto; el run `pull_request` de cache.yml no apareció en Actions (total 0 runs) — se re-dispara con este commit `synchronize` para verificar el build en CI.
