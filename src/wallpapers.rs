@@ -1,5 +1,6 @@
 // Wallpapers: lista los fondos disponibles (videos animados e imágenes del
-// backdrop) como Items del launcher, separados en tres secciones:
+// backdrop) como Items del launcher, separados en tres secciones, todas de
+// carpetas del usuario: los headers del banner nunca entran al selector.
 //   - "Fondo de pantalla": videos (mpvpaper, capa por workspace)
 //   - "Background": imágenes (niri-backdrop, capa detrás de todo)
 //   - "Mis fondos": ~/.loon-launch/wallpapers (dotdir propio, mixto por extensión)
@@ -94,52 +95,59 @@ fn headers_src_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Copia al dotdir lo que falte por nombre desde los headers instalados.
-/// Devuelve cuántos copió. Pura en rutas explícitas para poder probarla.
-pub(crate) fn seed_missing(dir: &Path, src: &Path) -> usize {
-    let Ok(entries) = fs::read_dir(src) else {
+/// Limpieza única de la siembra vieja: borra del dotdir los archivos cuyo
+/// nombre existe en los headers instalados Y cuyo contenido es idéntico
+/// (eran copias sembradas por la app, no archivos del usuario). Devuelve
+/// cuántos borró. Pura en rutas explícitas para poder probarla.
+pub(crate) fn purge_seeded(dir: &Path, src: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
         return 0;
     };
-    let mut copied = 0;
+    let mut removed = 0;
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-        let dest = dir.join(entry.file_name());
-        if !dest.exists() && fs::copy(&path, &dest).is_ok() {
-            copied += 1;
+        let candidate = src.join(entry.file_name());
+        if !candidate.is_file() {
+            continue;
+        }
+        let same = fs::read(&path)
+            .ok()
+            .zip(fs::read(&candidate).ok())
+            .is_some_and(|(a, b)| a == b);
+        if same && fs::remove_file(&path).is_ok() {
+            removed += 1;
         }
     }
-    copied
+    removed
 }
 
 /// Efecto de arranque del selector: garantiza `~/.loon-launch/wallpapers`.
-/// La primera vez también siembra ahí las imágenes por defecto que trae el
-/// paquete y deja el marcador `.seeded`: los borrados del usuario no
-/// resucitan, y borrar el marcador re-siembra a pedido.
+/// Los headers del banner nunca se siembran ahí (el selector solo lista
+/// carpetas del usuario). Si existe el marcador `.seeded` de la siembra
+/// vieja, purga sus copias idénticas una sola vez y lo retira: los
+/// archivos propios del usuario no se tocan.
 fn ensure_user_dirs() {
     let dir = custom_dir();
     if fs::create_dir_all(&dir).is_err() {
         return;
     }
     let marker = dir.join(".seeded");
-    if marker.is_file() {
+    if !marker.is_file() {
         return;
     }
     if let Some(src) = headers_src_dirs().into_iter().find(|d| d.is_dir()) {
-        seed_missing(&dir, &src);
+        purge_seeded(&dir, &src);
     }
-    let _ = fs::write(
-        &marker,
-        "sembrado con las imágenes por defecto; bórralo para re-sembrar\n",
-    );
+    let _ = fs::remove_file(&marker);
 }
 
 pub fn wallpapers() -> Vec<Item> {
-    // Efecto explícito y barato: crea ~/.loon-launch/wallpapers (sembrado
-    // una sola vez) para que exista el lugar donde el usuario suelta las
-    // suyas. Después solo lee: create_dir_all y el marcador son no-ops.
+    // Efecto explícito y barato: crea ~/.loon-launch/wallpapers para que
+    // exista el lugar donde el usuario suelta las suyas (más la purga única
+    // de la siembra vieja). Después solo lee.
     ensure_user_dirs();
     let mut items = Vec::new();
     // Sección 1: Fondo de pantalla (videos animados).

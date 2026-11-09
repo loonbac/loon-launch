@@ -1,7 +1,7 @@
 // Tests de la lógica pura del launcher (filtrado, navegación, edición).
 use crate::apps::{data_dirs, power_actions};
 use crate::wallpapers::{
-    cache_dir_for, custom_dir_for, images_dir_for, is_video_ext, is_wallpaper_ext, seed_missing,
+    cache_dir_for, custom_dir_for, images_dir_for, is_video_ext, is_wallpaper_ext, purge_seeded,
     videos_dir_for,
 };
 use crate::filter::{
@@ -386,6 +386,27 @@ fn palette_uses_the_system_accent_when_available() {
 }
 
 #[test]
+fn pinned_accent_wins_over_the_file() {
+    use crate::ui::palette::resolve_accent;
+
+    // Regla del dueño: al aplicar un estático se fija el vigente y el
+    // archivo se ignora; al aplicar un animado se libera y manda el archivo.
+    assert_eq!(
+        resolve_accent(Some(Some("#111111".to_string())), Some("#222222".to_string())),
+        Some("#111111".to_string())
+    );
+    assert_eq!(
+        resolve_accent(Some(None), Some("#222222".to_string())),
+        None
+    );
+    assert_eq!(
+        resolve_accent(None, Some("#222222".to_string())),
+        Some("#222222".to_string())
+    );
+    assert_eq!(resolve_accent(None, None), None);
+}
+
+#[test]
 fn palette_keeps_its_default_accent_without_a_valid_token() {
     use crate::ui::palette::{normalize_accent, Palette};
 
@@ -652,25 +673,26 @@ fn wallpaper_ext_routing() {
 }
 
 #[test]
-fn seed_copies_only_missing_by_name() {
-    // Sembrar no pisa lo del usuario: lo que ya existe por nombre se respeta.
-    let base = std::env::temp_dir().join(format!("loon-launch-test-seed-{}", std::process::id()));
+fn purge_removes_only_identical_seeded_copies() {
+    // La purga solo borra copias idénticas de la siembra: lo propio se queda
+    // aunque comparta nombre, y lo que no está en el src ni se mira.
+    let base = std::env::temp_dir().join(format!("loon-launch-test-purge-{}", std::process::id()));
     let src = base.join("src");
     let dir = base.join("dir");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(src.join("nuevo.jpg"), "nuevo").unwrap();
+    std::fs::write(src.join("sembrada.jpg"), "paquete").unwrap();
     std::fs::write(src.join("mio.png"), "paquete").unwrap();
+    std::fs::write(dir.join("sembrada.jpg"), "paquete").unwrap();
     std::fs::write(dir.join("mio.png"), "usuario").unwrap();
-    assert_eq!(seed_missing(&dir, &src), 1);
+    std::fs::write(dir.join("solo-mia.jpg"), "usuario").unwrap();
+    assert_eq!(purge_seeded(&dir, &src), 1);
+    assert!(!dir.join("sembrada.jpg").exists());
     assert_eq!(
         std::fs::read_to_string(dir.join("mio.png")).unwrap(),
         "usuario"
     );
-    assert_eq!(
-        std::fs::read_to_string(dir.join("nuevo.jpg")).unwrap(),
-        "nuevo"
-    );
-    assert_eq!(seed_missing(&dir, &src), 0);
+    assert!(dir.join("solo-mia.jpg").is_file());
+    assert_eq!(purge_seeded(&dir, &src), 0);
     std::fs::remove_dir_all(&base).ok();
 }
