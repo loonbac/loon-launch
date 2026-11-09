@@ -85,7 +85,7 @@ test_tarball() {
   "$ENGINE" run --rm -i \
     -v "$ROOT:/src:ro" \
     -w /tmp \
-    docker.io/library/debian:12-slim \
+    docker.io/library/ubuntu:24.04 \
     sh -s <<DOCKER
 # `sh` aquí es dash: sin pipefail (igual que PORT).
 set -eu
@@ -102,7 +102,7 @@ DOCKER
 test_deb() {
   local deb="$DIST/$PKG_NAME-$VERSION.deb"
   [ -f "$deb" ] || { echo "-- sin .deb, se omite"; return 0; }
-  run_in docker.io/library/debian:12-slim "$deb" '
+  run_in docker.io/library/ubuntu:24.04 "$deb" '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends xvfb "/src/'"$deb"'"'
