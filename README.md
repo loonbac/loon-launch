@@ -87,6 +87,9 @@ cambiar fondo de pantalla...). El selector de fondos se abre **sólo** con esa
 acción; dentro de él, escribir filtra por nombre y `Tab` alterna fondos animados
 y estáticos.
 
+Tus propios fondos van en `~/.loon-launch/wallpapers/`: se crea solo con las
+imágenes que trae la app (sección "Mis fondos"); suelta ahí imágenes o videos.
+
 ## Arquitectura
 
 El proceso es un daemon persistente: arranca oculto con la sesión y el atajo
